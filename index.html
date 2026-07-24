@@ -1,3 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
 <title>Runway — Budget &amp; Net Worth</title>
 <style>
   :root {
@@ -333,6 +339,8 @@
   }
   footer.note button:hover { color: var(--crit); }
 </style>
+</head>
+<body>
 
 <!-- ===================== AUTH SCREEN ===================== -->
 <div class="auth-screen" id="authScreen" style="display:none">
@@ -621,6 +629,7 @@
   var user = null;
   var suppressSave = false;
   var cloudTimer = null;
+  var retryTimer = null;
 
   // ---------- state helpers ----------
   function defaults() {
@@ -688,10 +697,19 @@
   }
   function pushCloud() {
     if (!sb || !user) return;
+    clearTimeout(retryTimer);
     sb.from("budgets")
       .upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() })
-      .then(function (res) { setSync(res && res.error ? "error" : "saved"); })
-      .catch(function () { setSync("error"); });
+      .then(function (res) {
+        if (res && res.error) onSaveFail();
+        else setSync("saved");
+      })
+      .catch(onSaveFail);
+  }
+  function onSaveFail() {
+    setSync("error");
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(pushCloud, 5000); // keep retrying until it lands
   }
   function setSync(status) {
     var e = document.getElementById("syncStatus");
@@ -1100,8 +1118,26 @@
     });
     document.getElementById("signOut").addEventListener("click", function () {
       if (!sb) return;
-      sb.auth.signOut().then(function () { user = null; showAuth(); });
+      sb.auth.signOut().then(function () {
+        user = null;
+        // clear cached data so a different account signing in here can't inherit it
+        suppressSave = true;
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        state = migrate(defaults());
+        suppressSave = false;
+        showAuth();
+      });
     });
+
+    // flush pending saves when leaving the page, and retry when the connection returns
+    window.addEventListener("online", function () { if (user) pushCloud(); });
+    function flushPending() {
+      if (user && cloudTimer) { clearTimeout(cloudTimer); pushCloud(); }
+    }
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") flushPending();
+    });
+    window.addEventListener("pagehide", flushPending);
   }
 
   // ---------- auth flow ----------
@@ -1183,3 +1219,5 @@
   boot();
 })();
 </script>
+</body>
+</html>

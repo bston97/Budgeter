@@ -7,8 +7,16 @@ Live app: https://bston97.github.io/Budgeter/
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [1.0.1] — 2026-07-24
+
 ### Fixed
-- Net worth and Settle up tabs: added spacing between the hero summary card and the grid of cards below it, so the Assets/Credit/Loans and ledger card borders no longer touch the summary (matches the spacing on the Runway tab).
+- Added the standard document head (doctype, UTF-8 charset, and mobile **viewport** meta) that the standalone GitHub Pages site was missing after the move off Claude Artifacts — fixes page scaling on phones so the responsive single-column layout actually kicks in.
+- Cloud saves now genuinely **retry** after a failure and when the connection returns, matching the "Offline — will retry" status (previously no retry ever happened).
+- **Signing out clears the locally cached data**, so a different account signing in on the same browser no longer inherits or overwrites the previous user's data.
+- **Pending edits are flushed** to the cloud when the tab is hidden or closed, so the last change before leaving isn't lost.
+- Net worth and Settle up tabs: added spacing between the hero summary card and the grid of cards below it, so the card borders no longer touch the summary (matches the Runway tab).
 
 ## [1.0.0] — 2026-07-24
 
