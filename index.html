@@ -114,6 +114,8 @@
   .pw-msg { font-size: 12px; }
   .pw-msg.ok { color: var(--accent); }
   .pw-msg.err { color: var(--crit); }
+  /* the hidden attribute must win over .pw-set's display:flex */
+  .pw-set[hidden] { display: none; }
 
   .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
 
@@ -326,6 +328,24 @@
   .compo .legend .dot.debt { background: var(--crit); }
   .compo .legend .v { font-weight: 700; margin-left: 2px; }
 
+  /* Net worth top row: net-worth card + credit score card */
+  .nw-top { display: grid; grid-template-columns: 3fr 1fr; gap: 20px; align-items: stretch; }
+  @media (max-width: 860px) { .nw-top { grid-template-columns: 1fr; } }
+  .nw-top + .grid { margin-top: 20px; }
+  .nw-top > .card { margin-top: 0; }
+  .credit-hero { display: flex; flex-direction: column; height: 100%; }
+  .credit-hero .amount.score { font-size: clamp(34px, 5vw, 46px); }
+  .gauge {
+    position: relative; height: 10px; border-radius: 999px; margin-top: 16px;
+    background: linear-gradient(90deg, #c0453b 0%, #d8802a 28%, #d8b021 48%, #7bb356 74%, #2f9e5b 100%);
+  }
+  .gauge-marker {
+    position: absolute; top: -5px; left: 50%; width: 4px; height: 20px; border-radius: 2px;
+    background: var(--ink); box-shadow: 0 0 0 2px var(--surface); transform: translateX(-50%); transition: left .25s ease;
+  }
+  .gauge-scale { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--ink-faint); }
+  .credit-hero input { margin-top: 16px; }
+
   /* Settle-up tracker */
   .track {
     margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line-strong);
@@ -489,6 +509,7 @@
 
     <!-- ===================== NET WORTH PANEL ===================== -->
     <div class="panel" id="panel-networth" role="tabpanel" aria-labelledby="tab-networth">
+      <div class="nw-top">
       <section class="card">
         <div class="hero" id="nwHero">
           <div class="eyebrow">Net worth</div>
@@ -507,6 +528,18 @@
           </div>
         </div>
       </section>
+
+      <section class="card">
+        <div class="hero credit-hero" id="creditHero">
+          <div class="eyebrow">Credit score</div>
+          <p class="amount score tnum" id="creditNum">—</p>
+          <div class="amount-label" id="creditRating">Enter your score below</div>
+          <div class="gauge"><div class="gauge-marker" id="creditMarker"></div></div>
+          <div class="gauge-scale"><span>Poor · 300</span><span>850 · Excellent</span></div>
+          <input type="number" id="creditInput" min="300" max="850" inputmode="numeric" placeholder="Enter score (300–850)" />
+        </div>
+      </section>
+      </div>
 
       <div class="grid">
         <div class="col-left">
@@ -660,11 +693,13 @@
   var suppressSave = false;
   var cloudTimer = null;
   var retryTimer = null;
+  var knownHasPassword = false;
 
   // ---------- state helpers ----------
   function defaults() {
     return {
       checking: "",
+      creditScore: "",
       cards: [{ name: "Visa", balance: "" }],
       bills: [
         { name: "Rent", amount: "1200", due: "1" },
@@ -697,6 +732,7 @@
     if (!Array.isArray(s.settle.iOwe)) s.settle.iOwe = [];
     if (typeof s.settle.lastUpdated !== "string") s.settle.lastUpdated = "";
     if (typeof s.settle.lastVenmo !== "string") s.settle.lastVenmo = "";
+    if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
     return s;
   }
   function readLocal() {
@@ -789,6 +825,9 @@
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var DAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   function fmtLong(d) { return DAY[d.getDay()] + ", " + MON[d.getMonth()] + " " + d.getDate(); }
+  var MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  function isLastDayOfMonth(d) { return d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
+  function fmtPayday(d) { return isLastDayOfMonth(d) ? "End of " + MONTHS_FULL[d.getMonth()] : fmtLong(d); }
 
   function el(tag, cls, attrs) {
     var e = document.createElement(tag);
@@ -893,7 +932,7 @@
     hero.classList.toggle("short-neg", available < 0);
     hero.classList.toggle("short-ok", available >= 0);
 
-    document.getElementById("payDate").textContent = fmtLong(payday);
+    document.getElementById("payDate").textContent = fmtPayday(payday);
     document.getElementById("payAway").textContent = daysLeft === 0 ? "· today" : "· in " + daysLeft + " day" + (daysLeft === 1 ? "" : "s");
     document.getElementById("billsBefore").textContent = money(billsBefore);
     document.getElementById("daysLeft").textContent = daysLeft;
@@ -936,7 +975,7 @@
     }
     var pm = el("div", "pay-marker");
     var band = el("div", "band");
-    band.innerHTML = '<span>Payday · ' + fmtLong(payday) + '</span><span>+ paycheck</span>';
+    band.innerHTML = '<span>Payday · ' + fmtPayday(payday) + '</span><span>+ paycheck</span>';
     pm.appendChild(band);
     tl.appendChild(pm);
   }
@@ -972,6 +1011,35 @@
     var aPct = denom > 0 ? (assets / denom) * 100 : 50;
     document.getElementById("segAsset").style.width = aPct + "%";
     document.getElementById("segDebt").style.width = (100 - aPct) + "%";
+  }
+
+  // ---------- Credit score ----------
+  function creditBand(s) {
+    if (s >= 800) return { label: "Excellent", color: "#2f9e5b" };
+    if (s >= 740) return { label: "Very good", color: "#5aa544" };
+    if (s >= 670) return { label: "Good", color: "#c99a1e" };
+    if (s >= 580) return { label: "Fair", color: "#d8802a" };
+    return { label: "Poor", color: "#c0453b" };
+  }
+  function recomputeCredit() {
+    var raw = parseInt(state.creditScore, 10);
+    var numEl = document.getElementById("creditNum");
+    var rateEl = document.getElementById("creditRating");
+    var marker = document.getElementById("creditMarker");
+    if (isNaN(raw)) {
+      numEl.textContent = "—";
+      numEl.style.color = "";
+      rateEl.textContent = "Enter your score below";
+      marker.style.display = "none";
+      return;
+    }
+    var s = Math.max(300, Math.min(850, raw));
+    var band = creditBand(s);
+    numEl.textContent = String(raw);
+    numEl.style.color = band.color;
+    rateEl.textContent = band.label;
+    marker.style.display = "";
+    marker.style.left = ((s - 300) / 550 * 100) + "%";
   }
 
   // ---------- Settle up ----------
@@ -1063,6 +1131,7 @@
   // ---------- render everything from current state ----------
   function renderAll() {
     document.getElementById("checking").value = state.checking || "";
+    document.getElementById("creditInput").value = state.creditScore || "";
     renderBills();
     renderAccounts("cards", state.cards, "Card name", onWorthChange);
     renderAccounts("loans", state.loans, "Loan name", onWorthChange);
@@ -1071,12 +1140,16 @@
     renderLedger("iOwe", state.settle.iOwe);
     recompute();
     recomputeSettle();
+    recomputeCredit();
   }
 
   // ---------- static wiring (once) ----------
   function wireStatic() {
     document.getElementById("checking").addEventListener("input", function () {
       state.checking = this.value; recompute();
+    });
+    document.getElementById("creditInput").addEventListener("input", function () {
+      state.creditScore = this.value; save(); recomputeCredit();
     });
     document.getElementById("addBill").addEventListener("click", function () {
       state.bills.push({ name: "", amount: "", due: "" }); renderBills(); recompute();
@@ -1239,9 +1312,19 @@
     btn.disabled = true;
     authMsg("Signing in…", false);
     sb.auth.signInWithPassword({ email: email, password: pw })
-      .then(function (res) { if (res && res.error) authMsg(friendlyAuthError(res.error), true); })
+      .then(function (res) {
+        if (res && res.error) { authMsg(friendlyAuthError(res.error), true); return; }
+        markHasPassword(); // they signed in with a password, so remember they have one
+      })
       .catch(function () { authMsg("Something went wrong. Please try again.", true); })
       .then(function () { btn.disabled = false; });
+  }
+
+  function markHasPassword() {
+    knownHasPassword = true;
+    var b = document.getElementById("setPw"); if (b) b.textContent = "Change password";
+    var l = document.getElementById("pwSetLabel"); if (l) l.textContent = "Change your password:";
+    if (sb) sb.auth.updateUser({ data: { has_password: true } }).catch(function () {});
   }
 
   function forgotPassword() {
@@ -1272,6 +1355,7 @@
         msg.className = "pw-msg ok";
         document.getElementById("pwNew").value = "";
         document.getElementById("pwConfirm").value = "";
+        knownHasPassword = true;
         if (user) { user.user_metadata = user.user_metadata || {}; user.user_metadata.has_password = true; }
         document.getElementById("setPw").textContent = "Change password";
         document.getElementById("pwSetLabel").textContent = "Change your password:";
@@ -1293,7 +1377,8 @@
     document.getElementById("app").style.display = "";
     var chip = document.getElementById("acctEmail");
     if (chip) chip.textContent = u.email || "";
-    var hasPw = !!(u.user_metadata && u.user_metadata.has_password);
+    var hasPw = knownHasPassword || !!(u.user_metadata && u.user_metadata.has_password);
+    if (hasPw) knownHasPassword = true;
     document.getElementById("setPw").textContent = hasPw ? "Change password" : "Set password";
     document.getElementById("pwSetLabel").textContent = hasPw
       ? "Change your password:"

@@ -1,50 +1,31 @@
 # Changelog
 
-All notable changes to **Runway** (the Budgeter web app) are recorded here.
-Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH).
+Notable changes to **Runway** (the Budgeter web app), grouped by feature release. Smaller
+patch fixes are summarized within the release they shipped under rather than listed separately.
+Versions follow [Semantic Versioning](https://semver.org/): the middle number is a feature
+release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
-## [Unreleased]
+## [1.2.0] — 2026-07-24
 
-_Nothing yet._
+### Added
+- **Credit score card** on the Net worth tab, sharing the top row with the net-worth summary. Shows your score, a Poor→Excellent rating, and a color gauge with a marker positioned across the 300–850 range.
+- **"End of month" payday label** — when the next payday is the last day of the month, the Runway tab now says e.g. "End of July" instead of a fixed date, since month lengths vary.
 
-## [1.1.1] — 2026-07-24
-
-### Changed
-- The header control now reads **"Change password"** once a password has been set (was always "Set password").
-- Setting a password now requires typing it **twice** (new + confirm) with **Save** and **Cancel** buttons, and rejects mismatched entries.
-- The set-password panel now **auto-hides** after a successful save, keeping the header clean.
+### Fixed
+- The Set/Change-password panel no longer shows on its own — it stayed visible because a CSS rule was overriding the hidden state.
+- The password control now reliably reads **"Change password"** once you've signed in with (or set) a password.
 
 ## [1.1.0] — 2026-07-24
 
 ### Added
-- **Email + password sign-in.** Sign in directly on the same tab with a password — no more opening a second tab from an email link every time. Magic link is kept as a fallback ("Email me a magic link instead") and a "Forgot password?" reset option was added.
-- **Set / change password** control in the app header (visible when signed in). Set a password on your existing account, then use email + password from then on. (First time: magic-link in once, then set a password.)
-
-## [1.0.1] — 2026-07-24
-
-### Fixed
-- Added the standard document head (doctype, UTF-8 charset, and mobile **viewport** meta) that the standalone GitHub Pages site was missing after the move off Claude Artifacts — fixes page scaling on phones so the responsive single-column layout actually kicks in.
-- Cloud saves now genuinely **retry** after a failure and when the connection returns, matching the "Offline — will retry" status (previously no retry ever happened).
-- **Signing out clears the locally cached data**, so a different account signing in on the same browser no longer inherits or overwrites the previous user's data.
-- **Pending edits are flushed** to the cloud when the tab is hidden or closed, so the last change before leaving isn't lost.
-- Net worth and Settle up tabs: added spacing between the hero summary card and the grid of cards below it, so the card borders no longer touch the summary (matches the Runway tab).
+- **Email + password sign-in**, so you no longer open a second tab from an email link each time. Includes an in-app **Set / Change password** control (type it twice to confirm, auto-hides after saving), with magic link kept as a fallback and a **Forgot password?** reset option.
 
 ## [1.0.0] — 2026-07-24
 
-First full version: a cloud-synced personal budget app, live on GitHub Pages.
-
 ### Added
-- **Runway tab** — cash until the next paycheck. Enter your checking balance and monthly bills (name, amount, due day); the app finds the next payday (15th and last day of each month), subtracts the bills due before then, and shows what's actually free to spend, a safe-to-spend-per-day figure, and a dated timeline of upcoming bills with a running balance.
-- **Net worth tab** — Assets (Robinhood, 401(k), savings, etc.) minus Debts (credit cards + loans), with a net-worth total and an asset-vs-debt split bar.
-- **Settle up tab** — a two-sided ledger with Maria: what you paid (she owes you) vs. what she paid (you owe her), the net difference showing who owes whom, plus separate "Last updated" (automatic) and "Last Venmo'd" (manual) trackers.
-- **Cloud sync via Supabase** — data is stored in Postgres (one row per user, protected by Row Level Security) and syncs across all your devices.
-- **Magic-link sign-in** — passwordless email login; no account/password to manage.
-- **Offline cache** — browser localStorage keeps a copy so the app loads instantly and survives brief offline moments; a "Saved ✓" indicator shows sync status.
-- **Light & dark themes** with a manual toggle.
+- First full version: **Runway** (cash to next paycheck), **Net worth** (debts & assets), and **Settle up** (a ledger with Maria). Cloud-synced across devices via Supabase with magic-link sign-in, light/dark themes, and offline caching. Hosted on GitHub Pages.
 
-### Infrastructure
-- Moved the project out of OneDrive to `C:\Users\bston\Projects\Budgeter` (OneDrive was locking git operations).
-- Set up a public GitHub repo (`bston97/Budgeter`) and deployed via GitHub Pages.
-- Migrated storage from browser-only localStorage to Supabase for cross-device access.
+### Fixed
+- Post-launch reliability pass: added the mobile viewport/document head (fixes phone scaling), made cloud saves retry on failure and flush when leaving the page, cleared cached data on sign-out, and corrected card spacing on the Net worth and Settle up tabs.
