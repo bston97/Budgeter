@@ -272,6 +272,11 @@
     color: var(--ink-faint); font-weight: 700; padding-bottom: 4px;
   }
   .col-head.accts { grid-template-columns: 1fr 108px 34px; }
+  .col-head.accts-date { grid-template-columns: 1fr 92px 120px 34px; }
+  .line-row.asset-row { grid-template-columns: 1fr 92px 120px 34px; }
+  .line-row.asset-row .as-of-date { font-size: 13px; color: var(--ink-soft); padding: 8px 8px; }
+  .asof-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--ink-faint); }
+  .asof-row input[type="date"] { width: auto; padding: 7px 10px; font-size: 13px; color: var(--ink); }
   .col-head.bills { grid-template-columns: 1fr 78px 96px 34px; }
   .col-head.ledger { grid-template-columns: 1fr 130px 88px 34px; }
   .col-head .r { text-align: left; }
@@ -563,6 +568,10 @@
           <div class="gauge"><div class="gauge-marker" id="creditMarker"></div></div>
           <div class="gauge-scale"><span>Poor · 300</span><span>850 · Excellent</span></div>
           <input type="number" id="creditInput" min="300" max="850" inputmode="numeric" placeholder="Enter score (300–850)" />
+          <div class="asof-row">
+            <label for="creditDate">Last checked</label>
+            <input type="date" id="creditDate" />
+          </div>
         </div>
       </section>
       </div>
@@ -576,7 +585,7 @@
             </div>
             <div class="card-body">
               <p class="note-line">Robinhood, 401(k), savings, cash — anything you own.</p>
-              <div class="col-head accts"><span>Account</span><span class="r">Value</span><span></span></div>
+              <div class="col-head accts-date"><span>Account</span><span class="r">Value</span><span class="r">As of</span><span></span></div>
               <div id="assets"></div>
               <button class="add-btn" id="addAsset" type="button">+ Add asset</button>
               <div class="subtotal">
@@ -727,6 +736,7 @@
     return {
       checking: "",
       creditScore: "",
+      creditDate: "",
       oneoffs: [],
       cards: [{ name: "Visa", balance: "" }],
       bills: [
@@ -761,6 +771,7 @@
     if (typeof s.settle.lastUpdated !== "string") s.settle.lastUpdated = "";
     if (typeof s.settle.lastVenmo !== "string") s.settle.lastVenmo = "";
     if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
+    if (typeof s.creditDate !== "string") s.creditDate = s.creditDate != null ? String(s.creditDate) : "";
     if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
     return s;
   }
@@ -886,12 +897,13 @@
     });
   }
 
-  // Generic name+balance row renderer (cards, loans, assets)
-  function renderAccounts(boxId, arr, namePh, onchange) {
+  // Generic name+balance row renderer (cards, loans, assets). opts.date adds an optional "as of" date column.
+  function renderAccounts(boxId, arr, namePh, onchange, opts) {
+    var withDate = opts && opts.date;
     var box = document.getElementById(boxId);
     box.innerHTML = "";
     arr.forEach(function (c, i) {
-      var row = el("div", "line-row");
+      var row = el("div", "line-row" + (withDate ? " asset-row" : ""));
       var name = el("input", null, { type: "text", placeholder: namePh });
       name.value = c.name;
       name.addEventListener("input", function () { c.name = name.value; save(); });
@@ -903,11 +915,20 @@
       amt.addEventListener("input", function () { c.balance = amt.value; onchange(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
+      row.appendChild(name); row.appendChild(amtWrap);
+
+      if (withDate) {
+        var date = el("input", "as-of-date", { type: "date", title: "As-of date (optional)" });
+        date.value = c.date || "";
+        date.addEventListener("input", function () { c.date = date.value; save(); });
+        row.appendChild(date);
+      }
+
       var del = el("button", "del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
-      del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange); onchange(); });
+      del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange, opts); onchange(); });
 
-      row.appendChild(name); row.appendChild(amtWrap); row.appendChild(del);
+      row.appendChild(del);
       box.appendChild(row);
     });
   }
@@ -1144,7 +1165,7 @@
     var band = creditBand(s);
     numEl.textContent = String(raw);
     numEl.style.color = band.color;
-    rateEl.textContent = band.label;
+    rateEl.textContent = band.label + (state.creditDate ? " · as of " + fmtISO(state.creditDate) : "");
     marker.style.display = "";
     marker.style.left = ((s - 300) / 550 * 100) + "%";
   }
@@ -1240,11 +1261,12 @@
     clearOldOneoffs();
     document.getElementById("checking").value = state.checking || "";
     document.getElementById("creditInput").value = state.creditScore || "";
+    document.getElementById("creditDate").value = state.creditDate || "";
     renderBills();
     renderOneoffs();
     renderAccounts("cards", state.cards, "Card name", onWorthChange);
     renderAccounts("loans", state.loans, "Loan name", onWorthChange);
-    renderAccounts("assets", state.assets, "Account name", onWorthChange);
+    renderAccounts("assets", state.assets, "Account name", onWorthChange, { date: true });
     renderLedger("sheOwes", state.settle.sheOwes);
     renderLedger("iOwe", state.settle.iOwe);
     recompute();
@@ -1260,6 +1282,9 @@
     document.getElementById("creditInput").addEventListener("input", function () {
       state.creditScore = this.value; save(); recomputeCredit();
     });
+    document.getElementById("creditDate").addEventListener("input", function () {
+      state.creditDate = this.value; save(); recomputeCredit();
+    });
     document.getElementById("addBill").addEventListener("click", function () {
       state.bills.push({ name: "", amount: "", due: "" }); renderBills(); recompute();
     });
@@ -1274,7 +1299,7 @@
       state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();
     });
     document.getElementById("addAsset").addEventListener("click", function () {
-      state.assets.push({ name: "", balance: "" }); renderAccounts("assets", state.assets, "Account name", onWorthChange); recompute();
+      state.assets.push({ name: "", balance: "" }); renderAccounts("assets", state.assets, "Account name", onWorthChange, { date: true }); recompute();
     });
     document.getElementById("addSheOwes").addEventListener("click", function () {
       state.settle.sheOwes.push({ desc: "", date: todayISO(), price: "" });
