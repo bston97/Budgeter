@@ -243,7 +243,16 @@
     display: grid; grid-template-columns: 1fr 108px 34px; gap: 8px; align-items: center;
     padding: 8px 0; border-top: 1px solid var(--line);
   }
-  .line-row.bills-row { grid-template-columns: 1fr 88px 66px 34px; }
+  .line-row.bills-row { grid-template-columns: 1fr 78px 96px 34px; }
+  .due-cell { display: flex; gap: 4px; align-items: center; }
+  .due-cell input { width: 44px; padding: 8px 4px; text-align: center; }
+  .due-cell input:disabled { opacity: .4; }
+  .eom-toggle {
+    border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink-faint);
+    font-family: inherit; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+    padding: 7px 7px; border-radius: 7px; cursor: pointer; line-height: 1;
+  }
+  .eom-toggle.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
   .line-row:first-of-type { border-top: none; }
   .line-row input { padding: 8px 10px; font-size: 14px; }
   .line-row .amt input { padding-left: 20px; font-variant-numeric: tabular-nums; }
@@ -260,7 +269,7 @@
     color: var(--ink-faint); font-weight: 700; padding-bottom: 4px;
   }
   .col-head.accts { grid-template-columns: 1fr 108px 34px; }
-  .col-head.bills { grid-template-columns: 1fr 88px 66px 34px; }
+  .col-head.bills { grid-template-columns: 1fr 78px 96px 34px; }
   .col-head.ledger { grid-template-columns: 1fr 130px 88px 34px; }
   .col-head .r { text-align: left; }
 
@@ -468,6 +477,20 @@
               </div>
             </div>
           </section>
+
+          <section class="card">
+            <div class="card-head"><h2>Extra payments this period</h2></div>
+            <div class="card-body">
+              <p class="note-line">One-off amounts to hold against your cash — like a credit-card payment. These clear automatically once your next payday passes.</p>
+              <div class="col-head accts"><span>What for</span><span class="r">Amount</span><span></span></div>
+              <div id="oneoffs"></div>
+              <button class="add-btn" id="addOneoff" type="button">+ Add a one-off payment</button>
+              <div class="subtotal">
+                <span>Total held this period</span>
+                <span class="v tnum" id="oneoffTotal">$0.00</span>
+              </div>
+            </div>
+          </section>
         </div>
 
         <div class="col-right">
@@ -486,7 +509,7 @@
                   <div class="v tnum" id="perDay">$0.00</div>
                 </div>
                 <div class="metric">
-                  <div class="k">Bills before payday</div>
+                  <div class="k">Due before payday</div>
                   <div class="v tnum" id="billsBefore">$0.00</div>
                 </div>
                 <div class="metric">
@@ -700,6 +723,7 @@
     return {
       checking: "",
       creditScore: "",
+      oneoffs: [],
       cards: [{ name: "Visa", balance: "" }],
       bills: [
         { name: "Rent", amount: "1200", due: "1" },
@@ -733,6 +757,7 @@
     if (typeof s.settle.lastUpdated !== "string") s.settle.lastUpdated = "";
     if (typeof s.settle.lastVenmo !== "string") s.settle.lastVenmo = "";
     if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
+    if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
     return s;
   }
   function readLocal() {
@@ -821,6 +846,20 @@
     if (d < t) d = make(1);
     return d;
   }
+  // resolve a bill's next occurrence; supports a numeric day (1–31) or "EOM" = end of month
+  function billOccurrence(bill, today) {
+    var eom = String(bill.due).toUpperCase() === "EOM";
+    var dueDay = eom ? 31 : parseInt(bill.due, 10);
+    if (isNaN(dueDay) || dueDay < 1) return null;
+    return billDate(dueDay, today); // billDate clamps to the month's last day
+  }
+  function isoToDate(iso) {
+    var p = String(iso).split("-");
+    return new Date(+p[0], (+p[1] - 1), +p[2]);
+  }
+  function dateToISO(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
 
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var DAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -883,11 +922,19 @@
       amt.addEventListener("input", function () { b.amount = amt.value; recompute(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
-      var dueWrap = el("div", "due-wrap");
+      var dueWrap = el("div", "due-cell");
+      var isEom = String(b.due).toUpperCase() === "EOM";
       var due = el("input", null, { type: "number", min: "1", max: "31", placeholder: "1" });
-      due.value = b.due;
+      due.value = isEom ? "" : (b.due || "");
+      due.disabled = isEom;
       due.addEventListener("input", function () { b.due = due.value; recompute(); });
-      dueWrap.appendChild(due);
+      var eomBtn = el("button", "eom-toggle" + (isEom ? " active" : ""), { type: "button", title: "Due at end of month" });
+      eomBtn.textContent = "EOM";
+      eomBtn.addEventListener("click", function () {
+        b.due = (String(b.due).toUpperCase() === "EOM") ? "" : "EOM";
+        renderBills(); recompute();
+      });
+      dueWrap.appendChild(due); dueWrap.appendChild(eomBtn);
 
       var del = el("button", "del", { type: "button", "aria-label": "Remove bill" });
       del.innerHTML = "&times;";
@@ -896,6 +943,42 @@
       row.appendChild(name); row.appendChild(amtWrap); row.appendChild(dueWrap); row.appendChild(del);
       box.appendChild(row);
     });
+  }
+
+  function renderOneoffs() {
+    var box = document.getElementById("oneoffs");
+    box.innerHTML = "";
+    state.oneoffs.forEach(function (o, i) {
+      var row = el("div", "line-row");
+      var desc = el("input", null, { type: "text", placeholder: "What for (e.g. Visa payment)" });
+      desc.value = o.desc || "";
+      desc.addEventListener("input", function () { o.desc = desc.value; recompute(); });
+
+      var amtWrap = el("div", "amt");
+      var cur = el("span", "cur"); cur.textContent = "$";
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      amt.value = o.amount || "";
+      amt.addEventListener("input", function () { o.amount = amt.value; recompute(); });
+      amtWrap.appendChild(cur); amtWrap.appendChild(amt);
+
+      var del = el("button", "del", { type: "button", "aria-label": "Remove" });
+      del.innerHTML = "&times;";
+      del.addEventListener("click", function () { state.oneoffs.splice(i, 1); renderOneoffs(); recompute(); });
+
+      row.appendChild(desc); row.appendChild(amtWrap); row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
+  // drop one-off payments once the pay period they were logged in has ended
+  function clearOldOneoffs() {
+    var t = stripTime(new Date());
+    var before = state.oneoffs.length;
+    state.oneoffs = state.oneoffs.filter(function (o) {
+      if (!o.periodEnd) return true;
+      return t < stripTime(isoToDate(o.periodEnd));
+    });
+    if (state.oneoffs.length !== before) save();
   }
 
   function sumBalances(arr) { return arr.reduce(function (s, c) { return s + num(c.balance); }, 0); }
@@ -913,13 +996,21 @@
     var upcoming = [];
     state.bills.forEach(function (b) {
       var amt = num(b.amount);
-      var dueDay = parseInt(b.due, 10);
       if (!b.name && !amt) return;
-      if (isNaN(dueDay) || dueDay < 1) return;
-      var when = billDate(dueDay, today);
+      var when = billOccurrence(b, today);
+      if (!when) return;
       upcoming.push({ name: b.name || "Bill", amount: amt, when: when, beforePay: when <= payday });
     });
+    state.oneoffs.forEach(function (o) {
+      var amt = num(o.amount);
+      if (!o.desc && !amt) return;
+      var when = o.date ? isoToDate(o.date) : today;
+      upcoming.push({ name: o.desc || "Payment", amount: amt, when: when, beforePay: true, oneOff: true });
+    });
     upcoming.sort(function (a, b) { return a.when - b.when; });
+
+    var oneoffTotal = state.oneoffs.reduce(function (s, o) { return s + num(o.amount); }, 0);
+    document.getElementById("oneoffTotal").textContent = money(oneoffTotal);
 
     var billsBefore = upcoming.reduce(function (s, u) { return s + (u.beforePay ? u.amount : 0); }, 0);
     var available = checking - billsBefore;
@@ -965,7 +1056,7 @@
         var soon = (stripTime(u.when) - stripTime(new Date())) / 86400000;
         var pill = soon <= 3 ? ' <span class="pill soon">soon</span>' : '';
         mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + pill + '</div>' +
-                        '<div class="tl-sub">' + DAY[u.when.getDay()] + '</div>';
+                        '<div class="tl-sub">' + (u.oneOff ? "one-off payment" : DAY[u.when.getDay()]) + '</div>';
         var amt = el("div", "tl-amt");
         amt.innerHTML = "-" + money(u.amount) +
           '<span class="run ' + (running < 0 ? "neg" : "") + '">' + money(running) + ' left</span>';
@@ -1130,9 +1221,11 @@
 
   // ---------- render everything from current state ----------
   function renderAll() {
+    clearOldOneoffs();
     document.getElementById("checking").value = state.checking || "";
     document.getElementById("creditInput").value = state.creditScore || "";
     renderBills();
+    renderOneoffs();
     renderAccounts("cards", state.cards, "Card name", onWorthChange);
     renderAccounts("loans", state.loans, "Loan name", onWorthChange);
     renderAccounts("assets", state.assets, "Account name", onWorthChange);
@@ -1153,6 +1246,10 @@
     });
     document.getElementById("addBill").addEventListener("click", function () {
       state.bills.push({ name: "", amount: "", due: "" }); renderBills(); recompute();
+    });
+    document.getElementById("addOneoff").addEventListener("click", function () {
+      state.oneoffs.push({ desc: "", amount: "", date: todayISO(), periodEnd: dateToISO(nextPayday(new Date())) });
+      renderOneoffs(); recompute();
     });
     document.getElementById("addCard").addEventListener("click", function () {
       state.cards.push({ name: "", balance: "" }); renderAccounts("cards", state.cards, "Card name", onWorthChange); recompute();
