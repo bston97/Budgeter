@@ -109,6 +109,8 @@
   .pw-set input { width: auto; flex: 1 1 200px; }
   .pw-set button { border: none; background: var(--accent); color: #fff; font-family: inherit; font-weight: 600; font-size: 13px; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
   .pw-set button:hover { filter: brightness(1.06); }
+  .pw-set button.pw-cancel { background: transparent; color: var(--ink-soft); border: 1px solid var(--line-strong); }
+  .pw-set button.pw-cancel:hover { filter: none; border-color: var(--accent); color: var(--accent); }
   .pw-msg { font-size: 12px; }
   .pw-msg.ok { color: var(--accent); }
   .pw-msg.err { color: var(--crit); }
@@ -395,9 +397,11 @@
     </header>
 
     <div class="pw-set card" id="pwSet" hidden>
-      <span>Set a password so you can sign in without the email link:</span>
+      <span id="pwSetLabel">Set a password so you can sign in without the email link:</span>
       <input type="password" id="pwNew" placeholder="New password (min 6)" autocomplete="new-password" />
+      <input type="password" id="pwConfirm" placeholder="Confirm password" autocomplete="new-password" />
       <button id="pwSave" type="button">Save password</button>
+      <button id="pwCancel" type="button" class="pw-cancel">Cancel</button>
       <span class="pw-msg" id="pwMsg"></span>
     </div>
 
@@ -1149,13 +1153,25 @@
     document.getElementById("authForgot").addEventListener("click", forgotPassword);
 
     // in-app set / change password
+    function clearPwPanel() {
+      document.getElementById("pwNew").value = "";
+      document.getElementById("pwConfirm").value = "";
+      document.getElementById("pwMsg").textContent = "";
+    }
     document.getElementById("setPw").addEventListener("click", function () {
       var panel = document.getElementById("pwSet");
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) document.getElementById("pwNew").focus();
+      if (!panel.hidden) { clearPwPanel(); document.getElementById("pwNew").focus(); }
+    });
+    document.getElementById("pwCancel").addEventListener("click", function () {
+      document.getElementById("pwSet").hidden = true;
+      clearPwPanel();
     });
     document.getElementById("pwSave").addEventListener("click", savePassword);
     document.getElementById("pwNew").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") document.getElementById("pwConfirm").focus();
+    });
+    document.getElementById("pwConfirm").addEventListener("keydown", function (e) {
       if (e.key === "Enter") savePassword();
     });
     document.getElementById("signOut").addEventListener("click", function () {
@@ -1244,17 +1260,25 @@
   function savePassword() {
     var msg = document.getElementById("pwMsg");
     var pw = document.getElementById("pwNew").value || "";
+    var confirmPw = document.getElementById("pwConfirm").value || "";
     if (pw.length < 6) { msg.textContent = "Use at least 6 characters."; msg.className = "pw-msg err"; return; }
+    if (pw !== confirmPw) { msg.textContent = "Passwords don't match."; msg.className = "pw-msg err"; return; }
     if (!sb || !user) { msg.textContent = "You need to be signed in."; msg.className = "pw-msg err"; return; }
     msg.textContent = "Saving…"; msg.className = "pw-msg";
-    sb.auth.updateUser({ password: pw })
+    sb.auth.updateUser({ password: pw, data: { has_password: true } })
       .then(function (res) {
-        if (res && res.error) { msg.textContent = res.error.message; msg.className = "pw-msg err"; }
-        else {
-          msg.textContent = "Password set ✓ — use it to sign in next time.";
-          msg.className = "pw-msg ok";
-          document.getElementById("pwNew").value = "";
-        }
+        if (res && res.error) { msg.textContent = res.error.message; msg.className = "pw-msg err"; return; }
+        msg.textContent = "Password saved ✓";
+        msg.className = "pw-msg ok";
+        document.getElementById("pwNew").value = "";
+        document.getElementById("pwConfirm").value = "";
+        if (user) { user.user_metadata = user.user_metadata || {}; user.user_metadata.has_password = true; }
+        document.getElementById("setPw").textContent = "Change password";
+        document.getElementById("pwSetLabel").textContent = "Change your password:";
+        setTimeout(function () {
+          document.getElementById("pwSet").hidden = true;
+          msg.textContent = "";
+        }, 900);
       })
       .catch(function () { msg.textContent = "Something went wrong."; msg.className = "pw-msg err"; });
   }
@@ -1269,6 +1293,11 @@
     document.getElementById("app").style.display = "";
     var chip = document.getElementById("acctEmail");
     if (chip) chip.textContent = u.email || "";
+    var hasPw = !!(u.user_metadata && u.user_metadata.has_password);
+    document.getElementById("setPw").textContent = hasPw ? "Change password" : "Set password";
+    document.getElementById("pwSetLabel").textContent = hasPw
+      ? "Change your password:"
+      : "Set a password so you can sign in without the email link:";
     pullCloud(u);
   }
   function pullCloud(u) {

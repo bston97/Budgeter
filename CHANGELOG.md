@@ -9,6 +9,13 @@ Live app: https://bston97.github.io/Budgeter/
 
 _Nothing yet._
 
+## [1.1.1] — 2026-07-24
+
+### Changed
+- The header control now reads **"Change password"** once a password has been set (was always "Set password").
+- Setting a password now requires typing it **twice** (new + confirm) with **Save** and **Cancel** buttons, and rejects mismatched entries.
+- The set-password panel now **auto-hides** after a successful save, keeping the header clean.
+
 ## [1.1.0] — 2026-07-24
 
 ### Added
