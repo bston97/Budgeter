@@ -68,6 +68,33 @@
   }
   .tnum { font-variant-numeric: tabular-nums; }
 
+  /* Auth screen */
+  .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .auth-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 34px 28px; max-width: 380px; width: 100%; text-align: center;
+  }
+  .auth-card .mark {
+    width: 14px; height: 26px; border-radius: 3px; display: inline-block;
+    background: linear-gradient(var(--accent), var(--accent) 60%, var(--warn) 60%);
+  }
+  .auth-card h1 { font-size: 28px; margin: 12px 0 6px; letter-spacing: -.02em; }
+  .auth-card p { color: var(--ink-soft); font-size: 14px; margin: 0 0 20px; }
+  .auth-card input {
+    width: 100%; font-family: inherit; font-size: 15px; color: var(--ink); text-align: center;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px;
+    padding: 11px 12px; outline: none; margin-bottom: 12px;
+  }
+  .auth-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .auth-card button {
+    width: 100%; border: none; background: var(--accent); color: #fff; font-family: inherit;
+    font-size: 15px; font-weight: 650; padding: 12px; border-radius: 9px; cursor: pointer;
+  }
+  .auth-card button:hover { filter: brightness(1.06); }
+  .auth-card button:disabled { opacity: .6; cursor: default; }
+  .auth-msg { margin-top: 14px; font-size: 13px; color: var(--ink-soft); min-height: 18px; line-height: 1.45; }
+  .auth-msg.err { color: var(--crit); }
+
   .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
 
   header.top {
@@ -84,6 +111,17 @@
     display: inline-block;
   }
   .brand p { margin: 0; color: var(--ink-faint); font-size: 13px; }
+  .header-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .sync { font-size: 12px; color: var(--ink-faint); font-weight: 600; }
+  .sync.saved { color: var(--accent); }
+  .sync.error { color: var(--crit); }
+  .acct { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-faint); }
+  .acct #acctEmail { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .link-btn {
+    background: none; border: none; color: var(--ink-faint); text-decoration: underline;
+    cursor: pointer; font-family: inherit; font-size: 12px;
+  }
+  .link-btn:hover { color: var(--crit); }
   .theme-btn {
     border: 1px solid var(--line-strong); background: var(--surface);
     color: var(--ink-soft); border-radius: 999px; padding: 7px 14px;
@@ -168,7 +206,7 @@
     position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
     color: var(--ink-faint); font-size: 15px; pointer-events: none;
   }
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], input[type="email"] {
     width: 100%; font-family: inherit; font-size: 15px; color: var(--ink);
     background: var(--surface-2); border: 1px solid var(--line);
     border-radius: 9px; padding: 10px 12px; outline: none;
@@ -294,300 +332,374 @@
   footer.note button:hover { color: var(--crit); }
 </style>
 
-<div class="wrap">
-  <header class="top">
-    <div class="brand">
-      <span class="mark"></span>
-      <div>
-        <h1>Runway</h1>
-        <p>Cash until your next check — and the bigger picture.</p>
-      </div>
-    </div>
-    <button class="theme-btn" id="themeBtn" type="button">Dark mode</button>
-  </header>
-
-  <div class="tabs" role="tablist">
-    <button class="tab" role="tab" id="tab-runway" aria-selected="true" aria-controls="panel-runway" type="button">
-      Runway<span class="sub">money to next check</span>
-    </button>
-    <button class="tab" role="tab" id="tab-networth" aria-selected="false" aria-controls="panel-networth" type="button">
-      Net worth<span class="sub">debts &amp; assets</span>
-    </button>
-    <button class="tab" role="tab" id="tab-settle" aria-selected="false" aria-controls="panel-settle" type="button">
-      Settle up<span class="sub">you &amp; Maria</span>
-    </button>
+<!-- ===================== AUTH SCREEN ===================== -->
+<div class="auth-screen" id="authScreen" style="display:none">
+  <div class="auth-card">
+    <span class="mark"></span>
+    <h1>Runway</h1>
+    <p>Sign in with your email to load your budget on any device.</p>
+    <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email" />
+    <button id="authSend" type="button">Send magic link</button>
+    <div class="auth-msg" id="authMsg"></div>
   </div>
-
-  <!-- ===================== RUNWAY PANEL ===================== -->
-  <div class="panel active" id="panel-runway" role="tabpanel" aria-labelledby="tab-runway">
-    <div class="grid">
-      <div class="col-left">
-        <section class="card">
-          <div class="card-head"><h2>Checking</h2></div>
-          <div class="card-body">
-            <div class="field">
-              <label for="checking">Current checking balance</label>
-              <div class="money-input">
-                <span class="cur">$</span>
-                <input type="text" inputmode="decimal" id="checking" placeholder="0.00" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-head"><h2>Bills &amp; expenses</h2></div>
-          <div class="card-body">
-            <div class="col-head bills">
-              <span>Name</span><span class="r">Amount</span><span class="r">Due day</span><span></span>
-            </div>
-            <div id="bills"></div>
-            <button class="add-btn" id="addBill" type="button">+ Add bill</button>
-            <div class="subtotal">
-              <span>All monthly bills</span>
-              <span class="v tnum" id="billsTotal">$0.00</span>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div class="col-right">
-        <section class="card">
-          <div class="hero" id="hero">
-            <div class="eyebrow">Next payday</div>
-            <div class="payline">
-              <span class="date" id="payDate">—</span>
-              <span class="away" id="payAway"></span>
-            </div>
-            <p class="amount tnum" id="available">$0.00</p>
-            <div class="amount-label" id="availLabel">left after bills due before payday</div>
-            <div class="perday">
-              <div class="metric">
-                <div class="k">Safe to spend / day</div>
-                <div class="v tnum" id="perDay">$0.00</div>
-              </div>
-              <div class="metric">
-                <div class="k">Bills before payday</div>
-                <div class="v tnum" id="billsBefore">$0.00</div>
-              </div>
-              <div class="metric">
-                <div class="k">Days to payday</div>
-                <div class="v tnum" id="daysLeft">0</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-head"><h2>Between now and payday</h2></div>
-          <div class="card-body">
-            <div class="timeline" id="timeline"></div>
-          </div>
-        </section>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===================== NET WORTH PANEL ===================== -->
-  <div class="panel" id="panel-networth" role="tabpanel" aria-labelledby="tab-networth">
-    <section class="card">
-      <div class="hero" id="nwHero">
-        <div class="eyebrow">Net worth</div>
-        <div class="payline"><span class="away" id="nwSub">assets minus everything you owe</span></div>
-        <p class="amount tnum" id="netWorth">$0.00</p>
-        <div class="amount-label">what you'd have if you settled every account today</div>
-        <div class="compo">
-          <div class="bar">
-            <div class="seg-asset" id="segAsset" style="width:50%"></div>
-            <div class="seg-debt" id="segDebt" style="width:50%"></div>
-          </div>
-          <div class="legend">
-            <div class="item"><span class="dot asset"></span>Assets <span class="v tnum" id="assetsTotalHero">$0.00</span></div>
-            <div class="item"><span class="dot debt"></span>Debts <span class="v tnum" id="debtsTotalHero">$0.00</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="grid">
-      <div class="col-left">
-        <section class="card">
-          <div class="card-head">
-            <h2>Assets</h2>
-            <span class="head-total asset tnum" id="assetsHead">$0.00</span>
-          </div>
-          <div class="card-body">
-            <p class="note-line">Robinhood, 401(k), savings, cash — anything you own.</p>
-            <div class="col-head accts"><span>Account</span><span class="r">Value</span><span></span></div>
-            <div id="assets"></div>
-            <button class="add-btn" id="addAsset" type="button">+ Add asset</button>
-            <div class="subtotal">
-              <span>Total assets</span>
-              <span class="v asset tnum" id="assetsTotal">$0.00</span>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div class="col-right">
-        <section class="card">
-          <div class="card-head">
-            <h2>Credit cards</h2>
-            <span class="head-total debt tnum" id="cardsHead">$0.00</span>
-          </div>
-          <div class="card-body">
-            <div class="col-head accts"><span>Card</span><span class="r">Balance owed</span><span></span></div>
-            <div id="cards"></div>
-            <button class="add-btn" id="addCard" type="button">+ Add credit card</button>
-            <div class="subtotal">
-              <span>Total card debt</span>
-              <span class="v debt tnum" id="cardsTotal">$0.00</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-head">
-            <h2>Loans</h2>
-            <span class="head-total debt tnum" id="loansHead">$0.00</span>
-          </div>
-          <div class="card-body">
-            <p class="note-line">Auto, student, personal, mortgage — remaining balance.</p>
-            <div class="col-head accts"><span>Loan</span><span class="r">Balance owed</span><span></span></div>
-            <div id="loans"></div>
-            <button class="add-btn" id="addLoan" type="button">+ Add loan</button>
-            <div class="subtotal">
-              <span>Total loan debt</span>
-              <span class="v debt tnum" id="loansTotal">$0.00</span>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===================== SETTLE UP PANEL ===================== -->
-  <div class="panel" id="panel-settle" role="tabpanel" aria-labelledby="tab-settle">
-    <section class="card">
-      <div class="hero" id="settleHero">
-        <div class="eyebrow">Settle up with Maria</div>
-        <p class="amount tnum" id="settleNet">$0.00</p>
-        <div class="amount-label" id="settleWho">you're all square</div>
-        <div class="compo">
-          <div class="bar">
-            <div class="seg-asset" id="segSheOwes" style="width:50%"></div>
-            <div class="seg-debt" id="segIOwe" style="width:50%"></div>
-          </div>
-          <div class="legend">
-            <div class="item"><span class="dot asset"></span>Maria owes you <span class="v tnum" id="sheOwesHero">$0.00</span></div>
-            <div class="item"><span class="dot debt"></span>You owe Maria <span class="v tnum" id="iOweHero">$0.00</span></div>
-          </div>
-        </div>
-        <div class="track">
-          <div class="track-item">
-            <div class="k">Last updated</div>
-            <div class="v tnum" id="lastUpdated">—</div>
-          </div>
-          <div class="track-item">
-            <div class="k">Last Venmo'd</div>
-            <div class="track-set">
-              <input type="date" id="lastVenmo" />
-              <button class="track-btn" id="venmoToday" type="button">Settled today</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="grid">
-      <div class="col-left">
-        <section class="card">
-          <div class="card-head">
-            <h2>You paid — Maria owes you</h2>
-            <span class="head-total asset tnum" id="sheOwesHead">$0.00</span>
-          </div>
-          <div class="card-body">
-            <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
-            <div id="sheOwes"></div>
-            <button class="add-btn" id="addSheOwes" type="button">+ Add something you paid for</button>
-            <div class="subtotal">
-              <span>Total Maria owes you</span>
-              <span class="v asset tnum" id="sheOwesTotal">$0.00</span>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div class="col-right">
-        <section class="card">
-          <div class="card-head">
-            <h2>Maria paid — you owe her</h2>
-            <span class="head-total debt tnum" id="iOweHead">$0.00</span>
-          </div>
-          <div class="card-body">
-            <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
-            <div id="iOwe"></div>
-            <button class="add-btn" id="addIOwe" type="button">+ Add something she paid for</button>
-            <div class="subtotal">
-              <span>Total you owe Maria</span>
-              <span class="v debt tnum" id="iOweTotal">$0.00</span>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  </div>
-
-  <footer class="note">
-    Saved automatically in this browser · paydays are the 15th and last day of each month ·
-    <button id="reset" type="button">Reset all data</button>
-  </footer>
 </div>
 
+<!-- ===================== APP ===================== -->
+<div id="app" style="display:none">
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <span class="mark"></span>
+        <div>
+          <h1>Runway</h1>
+          <p>Cash until your next check — and the bigger picture.</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="sync" id="syncStatus"></span>
+        <button class="theme-btn" id="themeBtn" type="button">Dark mode</button>
+        <div class="acct">
+          <span id="acctEmail"></span>
+          <button class="link-btn" id="signOut" type="button">Sign out</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-runway" aria-selected="true" aria-controls="panel-runway" type="button">
+        Runway<span class="sub">money to next check</span>
+      </button>
+      <button class="tab" role="tab" id="tab-networth" aria-selected="false" aria-controls="panel-networth" type="button">
+        Net worth<span class="sub">debts &amp; assets</span>
+      </button>
+      <button class="tab" role="tab" id="tab-settle" aria-selected="false" aria-controls="panel-settle" type="button">
+        Settle up<span class="sub">you &amp; Maria</span>
+      </button>
+    </div>
+
+    <!-- ===================== RUNWAY PANEL ===================== -->
+    <div class="panel active" id="panel-runway" role="tabpanel" aria-labelledby="tab-runway">
+      <div class="grid">
+        <div class="col-left">
+          <section class="card">
+            <div class="card-head"><h2>Checking</h2></div>
+            <div class="card-body">
+              <div class="field">
+                <label for="checking">Current checking balance</label>
+                <div class="money-input">
+                  <span class="cur">$</span>
+                  <input type="text" inputmode="decimal" id="checking" placeholder="0.00" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><h2>Bills &amp; expenses</h2></div>
+            <div class="card-body">
+              <div class="col-head bills">
+                <span>Name</span><span class="r">Amount</span><span class="r">Due day</span><span></span>
+              </div>
+              <div id="bills"></div>
+              <button class="add-btn" id="addBill" type="button">+ Add bill</button>
+              <div class="subtotal">
+                <span>All monthly bills</span>
+                <span class="v tnum" id="billsTotal">$0.00</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="col-right">
+          <section class="card">
+            <div class="hero" id="hero">
+              <div class="eyebrow">Next payday</div>
+              <div class="payline">
+                <span class="date" id="payDate">—</span>
+                <span class="away" id="payAway"></span>
+              </div>
+              <p class="amount tnum" id="available">$0.00</p>
+              <div class="amount-label" id="availLabel">left after bills due before payday</div>
+              <div class="perday">
+                <div class="metric">
+                  <div class="k">Safe to spend / day</div>
+                  <div class="v tnum" id="perDay">$0.00</div>
+                </div>
+                <div class="metric">
+                  <div class="k">Bills before payday</div>
+                  <div class="v tnum" id="billsBefore">$0.00</div>
+                </div>
+                <div class="metric">
+                  <div class="k">Days to payday</div>
+                  <div class="v tnum" id="daysLeft">0</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><h2>Between now and payday</h2></div>
+            <div class="card-body">
+              <div class="timeline" id="timeline"></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== NET WORTH PANEL ===================== -->
+    <div class="panel" id="panel-networth" role="tabpanel" aria-labelledby="tab-networth">
+      <section class="card">
+        <div class="hero" id="nwHero">
+          <div class="eyebrow">Net worth</div>
+          <div class="payline"><span class="away" id="nwSub">assets minus everything you owe</span></div>
+          <p class="amount tnum" id="netWorth">$0.00</p>
+          <div class="amount-label">what you'd have if you settled every account today</div>
+          <div class="compo">
+            <div class="bar">
+              <div class="seg-asset" id="segAsset" style="width:50%"></div>
+              <div class="seg-debt" id="segDebt" style="width:50%"></div>
+            </div>
+            <div class="legend">
+              <div class="item"><span class="dot asset"></span>Assets <span class="v tnum" id="assetsTotalHero">$0.00</span></div>
+              <div class="item"><span class="dot debt"></span>Debts <span class="v tnum" id="debtsTotalHero">$0.00</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="grid">
+        <div class="col-left">
+          <section class="card">
+            <div class="card-head">
+              <h2>Assets</h2>
+              <span class="head-total asset tnum" id="assetsHead">$0.00</span>
+            </div>
+            <div class="card-body">
+              <p class="note-line">Robinhood, 401(k), savings, cash — anything you own.</p>
+              <div class="col-head accts"><span>Account</span><span class="r">Value</span><span></span></div>
+              <div id="assets"></div>
+              <button class="add-btn" id="addAsset" type="button">+ Add asset</button>
+              <div class="subtotal">
+                <span>Total assets</span>
+                <span class="v asset tnum" id="assetsTotal">$0.00</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="col-right">
+          <section class="card">
+            <div class="card-head">
+              <h2>Credit cards</h2>
+              <span class="head-total debt tnum" id="cardsHead">$0.00</span>
+            </div>
+            <div class="card-body">
+              <div class="col-head accts"><span>Card</span><span class="r">Balance owed</span><span></span></div>
+              <div id="cards"></div>
+              <button class="add-btn" id="addCard" type="button">+ Add credit card</button>
+              <div class="subtotal">
+                <span>Total card debt</span>
+                <span class="v debt tnum" id="cardsTotal">$0.00</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>Loans</h2>
+              <span class="head-total debt tnum" id="loansHead">$0.00</span>
+            </div>
+            <div class="card-body">
+              <p class="note-line">Auto, student, personal, mortgage — remaining balance.</p>
+              <div class="col-head accts"><span>Loan</span><span class="r">Balance owed</span><span></span></div>
+              <div id="loans"></div>
+              <button class="add-btn" id="addLoan" type="button">+ Add loan</button>
+              <div class="subtotal">
+                <span>Total loan debt</span>
+                <span class="v debt tnum" id="loansTotal">$0.00</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== SETTLE UP PANEL ===================== -->
+    <div class="panel" id="panel-settle" role="tabpanel" aria-labelledby="tab-settle">
+      <section class="card">
+        <div class="hero" id="settleHero">
+          <div class="eyebrow">Settle up with Maria</div>
+          <p class="amount tnum" id="settleNet">$0.00</p>
+          <div class="amount-label" id="settleWho">you're all square</div>
+          <div class="compo">
+            <div class="bar">
+              <div class="seg-asset" id="segSheOwes" style="width:50%"></div>
+              <div class="seg-debt" id="segIOwe" style="width:50%"></div>
+            </div>
+            <div class="legend">
+              <div class="item"><span class="dot asset"></span>Maria owes you <span class="v tnum" id="sheOwesHero">$0.00</span></div>
+              <div class="item"><span class="dot debt"></span>You owe Maria <span class="v tnum" id="iOweHero">$0.00</span></div>
+            </div>
+          </div>
+          <div class="track">
+            <div class="track-item">
+              <div class="k">Last updated</div>
+              <div class="v tnum" id="lastUpdated">—</div>
+            </div>
+            <div class="track-item">
+              <div class="k">Last Venmo'd</div>
+              <div class="track-set">
+                <input type="date" id="lastVenmo" />
+                <button class="track-btn" id="venmoToday" type="button">Settled today</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="grid">
+        <div class="col-left">
+          <section class="card">
+            <div class="card-head">
+              <h2>You paid — Maria owes you</h2>
+              <span class="head-total asset tnum" id="sheOwesHead">$0.00</span>
+            </div>
+            <div class="card-body">
+              <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
+              <div id="sheOwes"></div>
+              <button class="add-btn" id="addSheOwes" type="button">+ Add something you paid for</button>
+              <div class="subtotal">
+                <span>Total Maria owes you</span>
+                <span class="v asset tnum" id="sheOwesTotal">$0.00</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="col-right">
+          <section class="card">
+            <div class="card-head">
+              <h2>Maria paid — you owe her</h2>
+              <span class="head-total debt tnum" id="iOweHead">$0.00</span>
+            </div>
+            <div class="card-body">
+              <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
+              <div id="iOwe"></div>
+              <button class="add-btn" id="addIOwe" type="button">+ Add something she paid for</button>
+              <div class="subtotal">
+                <span>Total you owe Maria</span>
+                <span class="v debt tnum" id="iOweTotal">$0.00</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <footer class="note">
+      Synced to your account across devices · paydays are the 15th and last day of each month ·
+      <button id="reset" type="button">Reset all data</button>
+    </footer>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function () {
   "use strict";
+
+  // ---------- config ----------
+  var SB_URL = "https://uobjmtunponfnxtigecv.supabase.co";
+  var SB_KEY = "sb_publishable_N-QTntEMsoT5pbV_0bRW6A_lWn4wHhm";
+  var APP_URL = "https://bston97.github.io/Budgeter/";
   var KEY = "runway.budget.v1";
 
-  var state = load();
+  var sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+  var user = null;
+  var suppressSave = false;
+  var cloudTimer = null;
 
-  function load() {
-    var s = null;
-    try {
-      var raw = localStorage.getItem(KEY);
-      if (raw) s = JSON.parse(raw);
-    } catch (e) {}
-    if (!s) {
-      s = {
-        checking: "",
-        cards: [{ name: "Visa", balance: "" }],
-        bills: [
-          { name: "Rent", amount: "1200", due: "1" },
-          { name: "Car payment", amount: "340", due: "5" },
-          { name: "Electric", amount: "95", due: "12" },
-          { name: "Phone", amount: "70", due: "18" },
-          { name: "Internet", amount: "60", due: "22" },
-          { name: "Groceries", amount: "400", due: "28" }
-        ]
-      };
-    }
-    // migrate: ensure new sections exist
-    if (!s.loans) s.loans = [{ name: "Car loan", balance: "" }];
-    if (!s.assets) s.assets = [
-      { name: "Robinhood", balance: "" },
-      { name: "401(k)", balance: "" },
-      { name: "Savings", balance: "" }
+  // ---------- state helpers ----------
+  function defaults() {
+    return {
+      checking: "",
+      cards: [{ name: "Visa", balance: "" }],
+      bills: [
+        { name: "Rent", amount: "1200", due: "1" },
+        { name: "Car payment", amount: "340", due: "5" },
+        { name: "Electric", amount: "95", due: "12" },
+        { name: "Phone", amount: "70", due: "18" },
+        { name: "Internet", amount: "60", due: "22" },
+        { name: "Groceries", amount: "400", due: "28" }
+      ],
+      loans: [{ name: "Car loan", balance: "" }],
+      assets: [
+        { name: "Robinhood", balance: "" },
+        { name: "401(k)", balance: "" },
+        { name: "Savings", balance: "" }
+      ],
+      settle: { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "" }
+    };
+  }
+  function migrate(s) {
+    if (!s || typeof s !== "object") s = {};
+    if (typeof s.checking !== "string") s.checking = s.checking != null ? String(s.checking) : "";
+    if (!Array.isArray(s.cards)) s.cards = [{ name: "Visa", balance: "" }];
+    if (!Array.isArray(s.bills)) s.bills = [];
+    if (!Array.isArray(s.loans)) s.loans = [{ name: "Car loan", balance: "" }];
+    if (!Array.isArray(s.assets)) s.assets = [
+      { name: "Robinhood", balance: "" }, { name: "401(k)", balance: "" }, { name: "Savings", balance: "" }
     ];
-    if (!s.cards) s.cards = [{ name: "Visa", balance: "" }];
-    if (!s.bills) s.bills = [];
-    if (!s.settle) s.settle = { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "" };
+    if (!s.settle || typeof s.settle !== "object") s.settle = { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "" };
+    if (!Array.isArray(s.settle.sheOwes)) s.settle.sheOwes = [];
+    if (!Array.isArray(s.settle.iOwe)) s.settle.iOwe = [];
+    if (typeof s.settle.lastUpdated !== "string") s.settle.lastUpdated = "";
+    if (typeof s.settle.lastVenmo !== "string") s.settle.lastVenmo = "";
     return s;
   }
-
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  function readLocal() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  }
+  function buildLocalState() {
+    var s = readLocal();
+    return migrate(s || defaults());
   }
 
+  var state = buildLocalState();
+
+  // ---------- persistence (local cache + debounced cloud) ----------
+  function save() {
+    if (suppressSave) return;
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    scheduleCloud();
+  }
+  function scheduleCloud() {
+    if (!sb || !user) return;
+    setSync("saving");
+    clearTimeout(cloudTimer);
+    cloudTimer = setTimeout(pushCloud, 900);
+  }
+  function pushCloud() {
+    if (!sb || !user) return;
+    sb.from("budgets")
+      .upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() })
+      .then(function (res) { setSync(res && res.error ? "error" : "saved"); })
+      .catch(function () { setSync("error"); });
+  }
+  function setSync(status) {
+    var e = document.getElementById("syncStatus");
+    if (!e) return;
+    var map = { loading: "Syncing…", saving: "Saving…", saved: "Saved ✓", error: "Offline — will retry" };
+    e.textContent = map[status] || "";
+    e.className = "sync " + status;
+  }
+
+  // ---------- utilities ----------
   function num(v) {
     var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
@@ -896,91 +1008,176 @@
     document.getElementById("lastVenmo").value = state.settle.lastVenmo || "";
   }
 
-  // ---------- wiring ----------
-  var checkingInput = document.getElementById("checking");
-  checkingInput.value = state.checking;
-  checkingInput.addEventListener("input", function () { state.checking = checkingInput.value; recompute(); });
-
-  document.getElementById("addBill").addEventListener("click", function () {
-    state.bills.push({ name: "", amount: "", due: "" }); renderBills(); recompute();
-  });
-  document.getElementById("addCard").addEventListener("click", function () {
-    state.cards.push({ name: "", balance: "" }); renderAccounts("cards", state.cards, "Card name", onWorthChange); recompute();
-  });
-  document.getElementById("addLoan").addEventListener("click", function () {
-    state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();
-  });
-  document.getElementById("addAsset").addEventListener("click", function () {
-    state.assets.push({ name: "", balance: "" }); renderAccounts("assets", state.assets, "Account name", onWorthChange); recompute();
-  });
-
   function onWorthChange() { save(); recomputeNetWorth(); }
 
-  document.getElementById("addSheOwes").addEventListener("click", function () {
-    state.settle.sheOwes.push({ desc: "", date: todayISO(), price: "" });
-    renderLedger("sheOwes", state.settle.sheOwes); touchSettle();
-  });
-  document.getElementById("addIOwe").addEventListener("click", function () {
-    state.settle.iOwe.push({ desc: "", date: todayISO(), price: "" });
-    renderLedger("iOwe", state.settle.iOwe); touchSettle();
-  });
-  document.getElementById("lastVenmo").addEventListener("input", function () {
-    state.settle.lastVenmo = this.value; save();
-  });
-  document.getElementById("venmoToday").addEventListener("click", function () {
-    state.settle.lastVenmo = todayISO(); save(); recomputeSettle();
-  });
-
-  document.getElementById("reset").addEventListener("click", function () {
-    if (confirm("Clear all saved balances, bills, debts and assets?")) {
-      localStorage.removeItem(KEY);
-      state = load();
-      checkingInput.value = state.checking;
-      renderBills();
-      renderAccounts("cards", state.cards, "Card name", onWorthChange);
-      renderAccounts("loans", state.loans, "Loan name", onWorthChange);
-      renderAccounts("assets", state.assets, "Account name", onWorthChange);
-      renderLedger("sheOwes", state.settle.sheOwes);
-      renderLedger("iOwe", state.settle.iOwe);
-      recompute();
-      recomputeSettle();
-    }
-  });
-
-  // tabs
-  var tabs = document.querySelectorAll(".tab");
-  tabs.forEach(function (t) {
-    t.addEventListener("click", function () {
-      tabs.forEach(function (x) { x.setAttribute("aria-selected", "false"); });
-      t.setAttribute("aria-selected", "true");
-      document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
-      document.getElementById(t.getAttribute("aria-controls")).classList.add("active");
-    });
-  });
-
-  // theme toggle
-  var themeBtn = document.getElementById("themeBtn");
-  function currentDark() {
-    var attr = document.documentElement.getAttribute("data-theme");
-    if (attr) return attr === "dark";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  // ---------- render everything from current state ----------
+  function renderAll() {
+    document.getElementById("checking").value = state.checking || "";
+    renderBills();
+    renderAccounts("cards", state.cards, "Card name", onWorthChange);
+    renderAccounts("loans", state.loans, "Loan name", onWorthChange);
+    renderAccounts("assets", state.assets, "Account name", onWorthChange);
+    renderLedger("sheOwes", state.settle.sheOwes);
+    renderLedger("iOwe", state.settle.iOwe);
+    recompute();
+    recomputeSettle();
   }
-  function syncThemeBtn() { themeBtn.textContent = currentDark() ? "Light mode" : "Dark mode"; }
-  themeBtn.addEventListener("click", function () {
-    var dark = !currentDark();
-    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-    syncThemeBtn();
-  });
-  syncThemeBtn();
 
-  // initial render
-  renderBills();
-  renderAccounts("cards", state.cards, "Card name", onWorthChange);
-  renderAccounts("loans", state.loans, "Loan name", onWorthChange);
-  renderAccounts("assets", state.assets, "Account name", onWorthChange);
-  renderLedger("sheOwes", state.settle.sheOwes);
-  renderLedger("iOwe", state.settle.iOwe);
-  recompute();
-  recomputeSettle();
+  // ---------- static wiring (once) ----------
+  function wireStatic() {
+    document.getElementById("checking").addEventListener("input", function () {
+      state.checking = this.value; recompute();
+    });
+    document.getElementById("addBill").addEventListener("click", function () {
+      state.bills.push({ name: "", amount: "", due: "" }); renderBills(); recompute();
+    });
+    document.getElementById("addCard").addEventListener("click", function () {
+      state.cards.push({ name: "", balance: "" }); renderAccounts("cards", state.cards, "Card name", onWorthChange); recompute();
+    });
+    document.getElementById("addLoan").addEventListener("click", function () {
+      state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();
+    });
+    document.getElementById("addAsset").addEventListener("click", function () {
+      state.assets.push({ name: "", balance: "" }); renderAccounts("assets", state.assets, "Account name", onWorthChange); recompute();
+    });
+    document.getElementById("addSheOwes").addEventListener("click", function () {
+      state.settle.sheOwes.push({ desc: "", date: todayISO(), price: "" });
+      renderLedger("sheOwes", state.settle.sheOwes); touchSettle();
+    });
+    document.getElementById("addIOwe").addEventListener("click", function () {
+      state.settle.iOwe.push({ desc: "", date: todayISO(), price: "" });
+      renderLedger("iOwe", state.settle.iOwe); touchSettle();
+    });
+    document.getElementById("lastVenmo").addEventListener("input", function () {
+      state.settle.lastVenmo = this.value; save();
+    });
+    document.getElementById("venmoToday").addEventListener("click", function () {
+      state.settle.lastVenmo = todayISO(); save(); recomputeSettle();
+    });
+    document.getElementById("reset").addEventListener("click", function () {
+      if (confirm("Clear all saved balances, bills, debts and assets? This clears them everywhere your account syncs.")) {
+        suppressSave = true;
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        state = migrate(defaults());
+        suppressSave = false;
+        renderAll();
+        save();
+      }
+    });
+
+    // tabs
+    var tabs = document.querySelectorAll(".tab");
+    tabs.forEach(function (t) {
+      t.addEventListener("click", function () {
+        tabs.forEach(function (x) { x.setAttribute("aria-selected", "false"); });
+        t.setAttribute("aria-selected", "true");
+        document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+        document.getElementById(t.getAttribute("aria-controls")).classList.add("active");
+      });
+    });
+
+    // theme toggle
+    var themeBtn = document.getElementById("themeBtn");
+    function currentDark() {
+      var attr = document.documentElement.getAttribute("data-theme");
+      if (attr) return attr === "dark";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    function syncThemeBtn() { themeBtn.textContent = currentDark() ? "Light mode" : "Dark mode"; }
+    themeBtn.addEventListener("click", function () {
+      var dark = !currentDark();
+      document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      syncThemeBtn();
+    });
+    syncThemeBtn();
+
+    // auth controls
+    document.getElementById("authSend").addEventListener("click", sendMagicLink);
+    document.getElementById("authEmail").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") sendMagicLink();
+    });
+    document.getElementById("signOut").addEventListener("click", function () {
+      if (!sb) return;
+      sb.auth.signOut().then(function () { user = null; showAuth(); });
+    });
+  }
+
+  // ---------- auth flow ----------
+  function authMsg(text, isErr) {
+    var m = document.getElementById("authMsg");
+    m.textContent = text;
+    m.className = "auth-msg" + (isErr ? " err" : "");
+  }
+  function sendMagicLink() {
+    if (!sb) { authMsg("Couldn't reach the sign-in service. Check your connection and reload.", true); return; }
+    var email = (document.getElementById("authEmail").value || "").trim();
+    if (!email || email.indexOf("@") < 0) { authMsg("Enter a valid email address.", true); return; }
+    var btn = document.getElementById("authSend");
+    btn.disabled = true;
+    authMsg("Sending…", false);
+    sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: APP_URL } })
+      .then(function (res) {
+        if (res && res.error) authMsg(res.error.message, true);
+        else authMsg("Check your email and tap the link to sign in. You can close this tab once you do.", false);
+      })
+      .catch(function () { authMsg("Something went wrong. Please try again.", true); })
+      .then(function () { btn.disabled = false; });
+  }
+
+  function showAuth() {
+    document.getElementById("app").style.display = "none";
+    document.getElementById("authScreen").style.display = "";
+  }
+  function enterApp(u) {
+    user = u;
+    document.getElementById("authScreen").style.display = "none";
+    document.getElementById("app").style.display = "";
+    var chip = document.getElementById("acctEmail");
+    if (chip) chip.textContent = u.email || "";
+    pullCloud(u);
+  }
+  function pullCloud(u) {
+    setSync("loading");
+    sb.from("budgets").select("data").eq("user_id", u.id).maybeSingle()
+      .then(function (res) {
+        if (res && res.error) { setSync("error"); return; } // keep local cache visible
+        if (res && res.data && res.data.data) {
+          suppressSave = true;
+          state = migrate(res.data.data);
+          suppressSave = false;
+          try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+          renderAll();
+          setSync("saved");
+        } else {
+          // first sign-in on this account: seed cloud from whatever is loaded locally
+          renderAll();
+          pushCloud();
+        }
+      })
+      .catch(function () { setSync("error"); });
+  }
+
+  function boot() {
+    wireStatic();
+    renderAll(); // render local cache immediately (app still hidden until auth resolves)
+
+    if (!sb) { showAuth(); authMsg("Couldn't load the sign-in service. Check your connection and reload.", true); return; }
+
+    sb.auth.getSession().then(function (res) {
+      var session = res && res.data ? res.data.session : null;
+      if (session && session.user) enterApp(session.user);
+      else showAuth();
+    });
+
+    sb.auth.onAuthStateChange(function (event, session) {
+      if (session && session.user) {
+        if (!user || user.id !== session.user.id) enterApp(session.user);
+      } else if (!session && user) {
+        user = null; showAuth();
+      }
+    });
+  }
+
+  boot();
 })();
 </script>
