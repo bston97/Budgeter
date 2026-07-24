@@ -73,6 +73,9 @@
     -webkit-font-smoothing: antialiased;
   }
   .tnum { font-variant-numeric: tabular-nums; }
+  button:focus-visible, [role="tab"]:focus-visible, .link-btn:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px;
+  }
 
   /* Auth screen */
   .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -481,7 +484,7 @@
           <section class="card">
             <div class="card-head"><h2>Extra payments this period</h2></div>
             <div class="card-body">
-              <p class="note-line">One-off amounts to hold against your cash — like a credit-card payment. These clear automatically once your next payday passes.</p>
+              <p class="note-line">One-off amounts to hold against your cash — like a credit-card payment you haven't made yet (so your checking balance doesn't already reflect it). These clear automatically once your next payday passes.</p>
               <div class="col-head accts"><span>What for</span><span class="r">Amount</span><span></span></div>
               <div id="oneoffs"></div>
               <button class="add-btn" id="addOneoff" type="button">+ Add a one-off payment</button>
@@ -716,6 +719,7 @@
   var suppressSave = false;
   var cloudTimer = null;
   var retryTimer = null;
+  var pendingSave = false;
   var knownHasPassword = false;
 
   // ---------- state helpers ----------
@@ -782,6 +786,7 @@
   }
   function scheduleCloud() {
     if (!sb || !user) return;
+    pendingSave = true;
     setSync("saving");
     clearTimeout(cloudTimer);
     cloudTimer = setTimeout(pushCloud, 900);
@@ -793,7 +798,7 @@
       .upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() })
       .then(function (res) {
         if (res && res.error) onSaveFail();
-        else setSync("saved");
+        else { pendingSave = false; setSync("saved"); }
       })
       .catch(onSaveFail);
   }
@@ -816,6 +821,7 @@
     return isNaN(n) ? 0 : n;
   }
   function money(n) {
+    if (Math.abs(n) < 0.005) n = 0; // avoid rendering "-$0.00" from tiny rounding
     var neg = n < 0;
     var s = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return (neg ? "-$" : "$") + s;
@@ -927,11 +933,20 @@
       var due = el("input", null, { type: "number", min: "1", max: "31", placeholder: "1" });
       due.value = isEom ? "" : (b.due || "");
       due.disabled = isEom;
-      due.addEventListener("input", function () { b.due = due.value; recompute(); });
+      due.addEventListener("input", function () {
+        var n = parseInt(due.value, 10);
+        if (!isNaN(n)) { if (n > 31) due.value = "31"; else if (n < 1) due.value = "1"; }
+        b.due = due.value; recompute();
+      });
       var eomBtn = el("button", "eom-toggle" + (isEom ? " active" : ""), { type: "button", title: "Due at end of month" });
       eomBtn.textContent = "EOM";
       eomBtn.addEventListener("click", function () {
-        b.due = (String(b.due).toUpperCase() === "EOM") ? "" : "EOM";
+        if (String(b.due).toUpperCase() === "EOM") {
+          b.due = b.prevDue || ""; // restore the day they had before turning EOM on
+        } else {
+          b.prevDue = b.due;
+          b.due = "EOM";
+        }
         renderBills(); recompute();
       });
       dueWrap.appendChild(due); dueWrap.appendChild(eomBtn);
@@ -970,7 +985,7 @@
     });
   }
 
-  // drop one-off payments once the pay period they were logged in has ended
+  // drop one-off payments once the pay period they were logged in has ended; returns true if any were removed
   function clearOldOneoffs() {
     var t = stripTime(new Date());
     var before = state.oneoffs.length;
@@ -978,13 +993,14 @@
       if (!o.periodEnd) return true;
       return t < stripTime(isoToDate(o.periodEnd));
     });
-    if (state.oneoffs.length !== before) save();
+    return state.oneoffs.length !== before;
   }
 
   function sumBalances(arr) { return arr.reduce(function (s, c) { return s + num(c.balance); }, 0); }
 
   // ---------- Runway computation ----------
   function recompute() {
+    if (clearOldOneoffs()) renderOneoffs(); // expire one-offs if a payday passed while the app stayed open
     save();
     var today = new Date();
     var payday = nextPayday(today);
@@ -1275,7 +1291,7 @@
       state.settle.lastVenmo = todayISO(); save(); recomputeSettle();
     });
     document.getElementById("reset").addEventListener("click", function () {
-      if (confirm("Clear all saved balances, bills, debts and assets? This clears them everywhere your account syncs.")) {
+      if (confirm("Clear ALL saved data — checking, bills, extra payments, credit score, debts, assets, and the Settle-up ledger with Maria? This clears it everywhere your account syncs and can't be undone.")) {
         suppressSave = true;
         try { localStorage.removeItem(KEY); } catch (e) {}
         state = migrate(defaults());
@@ -1287,12 +1303,19 @@
 
     // tabs
     var tabs = document.querySelectorAll(".tab");
-    tabs.forEach(function (t) {
-      t.addEventListener("click", function () {
-        tabs.forEach(function (x) { x.setAttribute("aria-selected", "false"); });
-        t.setAttribute("aria-selected", "true");
-        document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
-        document.getElementById(t.getAttribute("aria-controls")).classList.add("active");
+    function selectTab(t) {
+      tabs.forEach(function (x) { x.setAttribute("aria-selected", "false"); });
+      t.setAttribute("aria-selected", "true");
+      document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+      document.getElementById(t.getAttribute("aria-controls")).classList.add("active");
+    }
+    tabs.forEach(function (t, idx) {
+      t.addEventListener("click", function () { selectTab(t); });
+      t.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        e.preventDefault();
+        var next = e.key === "ArrowRight" ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length;
+        tabs[next].focus(); selectTab(tabs[next]);
       });
     });
 
@@ -1364,6 +1387,8 @@
     }
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "hidden") flushPending();
+      // returning to the tab with nothing unsaved: re-pull so edits from another device show up
+      else if (document.visibilityState === "visible" && user && !pendingSave) pullCloud(user);
     });
     window.addEventListener("pagehide", flushPending);
   }
@@ -1490,9 +1515,11 @@
         if (res && res.data && res.data.data) {
           suppressSave = true;
           state = migrate(res.data.data);
-          suppressSave = false;
+          var changed = clearOldOneoffs(); // expire stale one-offs from the loaded data
           try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
           renderAll();
+          suppressSave = false;
+          if (changed) pushCloud(); // only write back when the cleanup actually removed something
           setSync("saved");
         } else {
           // first sign-in on this account: seed cloud from whatever is loaded locally

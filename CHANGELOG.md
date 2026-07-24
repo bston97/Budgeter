@@ -13,6 +13,15 @@ Live app: https://bston97.github.io/Budgeter/
 - **Extra payments this period** section on the Runway tab — log one-off amounts (like a variable credit-card payment) that get held against your available cash until your next payday. They **auto-clear** once that payday passes, and show on the timeline as one-off payments.
 - **End-of-month bills** — each bill row now has an **EOM** toggle so a bill can be due at the end of the month (dynamically resolving to the 28th–31st) instead of a fixed day.
 
+### Fixed
+- "Reset all data" now spells out everything it clears (including the credit score and the Settle-up ledger with Maria), so nothing is wiped by surprise.
+- One-off payments now also expire mid-session if a payday passes while the app is left open — not just on reload.
+- Turning an **EOM** bill back to a numbered day restores the day you had before, instead of blanking it.
+- The due-day field is clamped to 1–31 as you type (a stray `0` or `45` no longer silently drops or mis-schedules a bill).
+- Amounts near zero no longer render as "-$0.00".
+- Skipped a redundant cloud write on load, and the app now refreshes from the cloud when you return to the tab (with nothing unsaved), so edits made on another device show up sooner.
+- Added visible keyboard-focus outlines and left/right arrow-key navigation between tabs.
+
 ## [1.2.0] — 2026-07-24
 
 ### Added
