@@ -100,6 +100,18 @@
   .auth-card button:disabled { opacity: .6; cursor: default; }
   .auth-msg { margin-top: 14px; font-size: 13px; color: var(--ink-soft); min-height: 18px; line-height: 1.45; }
   .auth-msg.err { color: var(--crit); }
+  .auth-alt { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .auth-card button.linkish { width: auto; background: none; border: none; color: var(--ink-faint); text-decoration: underline; font-size: 12px; font-weight: 600; padding: 0; }
+  .auth-card button.linkish:hover { color: var(--accent); filter: none; }
+  .auth-hint { font-size: 12px; color: var(--ink-faint); margin-top: 12px; line-height: 1.45; }
+
+  .pw-set { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 18px; font-size: 13px; color: var(--ink-soft); }
+  .pw-set input { width: auto; flex: 1 1 200px; }
+  .pw-set button { border: none; background: var(--accent); color: #fff; font-family: inherit; font-weight: 600; font-size: 13px; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  .pw-set button:hover { filter: brightness(1.06); }
+  .pw-msg { font-size: 12px; }
+  .pw-msg.ok { color: var(--accent); }
+  .pw-msg.err { color: var(--crit); }
 
   .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
 
@@ -347,9 +359,15 @@
   <div class="auth-card">
     <span class="mark"></span>
     <h1>Runway</h1>
-    <p>Sign in with your email to load your budget on any device.</p>
+    <p>Sign in to load your budget on any device.</p>
     <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email" />
-    <button id="authSend" type="button">Send magic link</button>
+    <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password" />
+    <button id="authSignIn" type="button">Sign in</button>
+    <div class="auth-alt">
+      <button id="authMagic" type="button" class="linkish">Email me a magic link instead</button>
+      <button id="authForgot" type="button" class="linkish">Forgot password?</button>
+    </div>
+    <div class="auth-hint">First time, or never set a password? Use the magic link to get in, then set a password from inside the app (top-right).</div>
     <div class="auth-msg" id="authMsg"></div>
   </div>
 </div>
@@ -370,10 +388,18 @@
         <button class="theme-btn" id="themeBtn" type="button">Dark mode</button>
         <div class="acct">
           <span id="acctEmail"></span>
+          <button class="link-btn" id="setPw" type="button">Set password</button>
           <button class="link-btn" id="signOut" type="button">Sign out</button>
         </div>
       </div>
     </header>
+
+    <div class="pw-set card" id="pwSet" hidden>
+      <span>Set a password so you can sign in without the email link:</span>
+      <input type="password" id="pwNew" placeholder="New password (min 6)" autocomplete="new-password" />
+      <button id="pwSave" type="button">Save password</button>
+      <span class="pw-msg" id="pwMsg"></span>
+    </div>
 
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-runway" aria-selected="true" aria-controls="panel-runway" type="button">
@@ -1112,9 +1138,25 @@
     syncThemeBtn();
 
     // auth controls
-    document.getElementById("authSend").addEventListener("click", sendMagicLink);
+    document.getElementById("authSignIn").addEventListener("click", passwordSignIn);
+    document.getElementById("authPassword").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") passwordSignIn();
+    });
     document.getElementById("authEmail").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") sendMagicLink();
+      if (e.key === "Enter") document.getElementById("authPassword").focus();
+    });
+    document.getElementById("authMagic").addEventListener("click", sendMagicLink);
+    document.getElementById("authForgot").addEventListener("click", forgotPassword);
+
+    // in-app set / change password
+    document.getElementById("setPw").addEventListener("click", function () {
+      var panel = document.getElementById("pwSet");
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) document.getElementById("pwNew").focus();
+    });
+    document.getElementById("pwSave").addEventListener("click", savePassword);
+    document.getElementById("pwNew").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") savePassword();
     });
     document.getElementById("signOut").addEventListener("click", function () {
       if (!sb) return;
@@ -1150,7 +1192,7 @@
     if (!sb) { authMsg("Couldn't reach the sign-in service. Check your connection and reload.", true); return; }
     var email = (document.getElementById("authEmail").value || "").trim();
     if (!email || email.indexOf("@") < 0) { authMsg("Enter a valid email address.", true); return; }
-    var btn = document.getElementById("authSend");
+    var btn = document.getElementById("authMagic");
     btn.disabled = true;
     authMsg("Sending…", false);
     sb.auth.signInWithOtp({ email: email, options: { emailRedirectTo: APP_URL } })
@@ -1160,6 +1202,61 @@
       })
       .catch(function () { authMsg("Something went wrong. Please try again.", true); })
       .then(function () { btn.disabled = false; });
+  }
+
+  function friendlyAuthError(err) {
+    var m = (err && err.message) || "";
+    if (/invalid login credentials/i.test(m))
+      return "Wrong email or password. Never set a password? Use the magic link, then set one inside the app.";
+    if (/email not confirmed/i.test(m))
+      return "Confirm your email first (check your inbox), then sign in.";
+    return m || "Couldn't sign in. Please try again.";
+  }
+
+  function passwordSignIn() {
+    if (!sb) { authMsg("Couldn't reach the sign-in service. Reload and try again.", true); return; }
+    var email = (document.getElementById("authEmail").value || "").trim();
+    var pw = document.getElementById("authPassword").value || "";
+    if (!email || email.indexOf("@") < 0) { authMsg("Enter a valid email address.", true); return; }
+    if (!pw) { authMsg("Enter your password.", true); return; }
+    var btn = document.getElementById("authSignIn");
+    btn.disabled = true;
+    authMsg("Signing in…", false);
+    sb.auth.signInWithPassword({ email: email, password: pw })
+      .then(function (res) { if (res && res.error) authMsg(friendlyAuthError(res.error), true); })
+      .catch(function () { authMsg("Something went wrong. Please try again.", true); })
+      .then(function () { btn.disabled = false; });
+  }
+
+  function forgotPassword() {
+    if (!sb) { authMsg("Couldn't reach the sign-in service. Reload and try again.", true); return; }
+    var email = (document.getElementById("authEmail").value || "").trim();
+    if (!email || email.indexOf("@") < 0) { authMsg("Enter your email above first, then tap Forgot password.", true); return; }
+    authMsg("Sending reset email…", false);
+    sb.auth.resetPasswordForEmail(email, { redirectTo: APP_URL })
+      .then(function (res) {
+        if (res && res.error) authMsg(res.error.message, true);
+        else authMsg("Reset email sent — open it to set a new password.", false);
+      })
+      .catch(function () { authMsg("Something went wrong. Please try again.", true); });
+  }
+
+  function savePassword() {
+    var msg = document.getElementById("pwMsg");
+    var pw = document.getElementById("pwNew").value || "";
+    if (pw.length < 6) { msg.textContent = "Use at least 6 characters."; msg.className = "pw-msg err"; return; }
+    if (!sb || !user) { msg.textContent = "You need to be signed in."; msg.className = "pw-msg err"; return; }
+    msg.textContent = "Saving…"; msg.className = "pw-msg";
+    sb.auth.updateUser({ password: pw })
+      .then(function (res) {
+        if (res && res.error) { msg.textContent = res.error.message; msg.className = "pw-msg err"; }
+        else {
+          msg.textContent = "Password set ✓ — use it to sign in next time.";
+          msg.className = "pw-msg ok";
+          document.getElementById("pwNew").value = "";
+        }
+      })
+      .catch(function () { msg.textContent = "Something went wrong."; msg.className = "pw-msg err"; });
   }
 
   function showAuth() {

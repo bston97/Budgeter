@@ -9,6 +9,12 @@ Live app: https://bston97.github.io/Budgeter/
 
 _Nothing yet._
 
+## [1.1.0] — 2026-07-24
+
+### Added
+- **Email + password sign-in.** Sign in directly on the same tab with a password — no more opening a second tab from an email link every time. Magic link is kept as a fallback ("Email me a magic link instead") and a "Forgot password?" reset option was added.
+- **Set / change password** control in the app header (visible when signed in). Set a password on your existing account, then use email + password from then on. (First time: magic-link in once, then set a password.)
+
 ## [1.0.1] — 2026-07-24
 
 ### Fixed
