@@ -7,7 +7,8 @@ Live app: https://bston97.github.io/Budgeter/
 
 ## [Unreleased]
 
-_Nothing yet — add notes here as changes land, then cut them into a new version._
+### Fixed
+- Net worth and Settle up tabs: added spacing between the hero summary card and the grid of cards below it, so the Assets/Credit/Loans and ledger card borders no longer touch the summary (matches the spacing on the Runway tab).
 
 ## [1.0.0] — 2026-07-24
 
