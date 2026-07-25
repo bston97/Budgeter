@@ -7,6 +7,11 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.10.1] — 2026-07-25
+
+### Changed
+- **One-off entries can now be money in as well as money out.** The section is now "Extra money in & out" — each row has a **−/+** toggle, so a cash withdrawal or one-time expense lowers your available cash while a deposited check, a Venmo you received, or cashback raises it. Money-in entries show green with a **+** on the timeline and push the running balance up; the section footer shows the **net effect** for the period. Existing entries are unchanged (they stay money out).
+
 ## [1.10.0] — 2026-07-25
 
 ### Added

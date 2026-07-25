@@ -1680,11 +1680,11 @@
         var date = el("div", "tl-date");
         date.innerHTML = '<div class="d">' + u.when.getDate() + '</div><div class="m">' + MON[u.when.getMonth()] + '</div>';
         var mid = el("div");
-        var soon = (stripTime(u.when) - stripTime(new Date())) / 86400000;
-        var pill = soon <= 3 ? ' <span class="pill soon">soon</span>' : '';
-        mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + pill + '</div>' +
-                        '<div class="tl-sub">' + (u.oneOff ? "one-off payment" : DAY[u.when.getDay()]) + '</div>';
         var moneyIn = u.amount < 0;
+        var soon = (stripTime(u.when) - stripTime(new Date())) / 86400000;
+        var pill = soon <= 3 && !moneyIn ? ' <span class="pill soon">soon</span>' : '';
+        mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + pill + '</div>' +
+                        '<div class="tl-sub">' + (u.oneOff ? (moneyIn ? "money in" : "money out") : DAY[u.when.getDay()]) + '</div>';
         var amt = el("div", "tl-amt" + (moneyIn ? " in" : ""));
         amt.innerHTML = (moneyIn ? "+" : "-") + money(Math.abs(u.amount)) +
           '<span class="run ' + (running < 0 ? "neg" : "") + '">' + money(running) + ' left</span>';
