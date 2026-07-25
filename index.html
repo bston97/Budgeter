@@ -325,7 +325,7 @@
     font-size: 13px; font-weight: 600; padding: 9px; border-radius: 9px; cursor: pointer;
   }
   .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-  .add-btn.subtle { margin-top: 6px; border-style: dotted; font-size: 12px; color: var(--ink-faint); padding: 7px; }
+  .settle-hint { font-size: 12px; color: var(--ink-faint); margin: 8px 0 0; line-height: 1.45; }
 
   /* one-off entries can be money out (−) or money in (+) */
   .col-head.oneoff-head { grid-template-columns: 1fr 44px 92px 34px; }
@@ -918,6 +918,7 @@
             <span class="amp">&amp;</span>
             <input type="text" id="nameB" placeholder="Their name" />
           </div>
+          <p class="settle-hint">Running tab? Add an entry called “Starting balance” on either side to carry over what’s already owed.</p>
         </div>
       </section>
 
@@ -932,7 +933,6 @@
               <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
               <div id="sheOwes"></div>
               <button class="add-btn" id="addSheOwes" type="button">+ Add something you paid for</button>
-              <button class="add-btn subtle" id="startSheOwes" type="button">+ Starting balance</button>
               <div class="subtotal">
                 <span id="sheOwesSubLabel">Total Maria owes you</span>
                 <span class="v asset tnum" id="sheOwesTotal">$0.00</span>
@@ -951,7 +951,6 @@
               <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
               <div id="iOwe"></div>
               <button class="add-btn" id="addIOwe" type="button">+ Add something she paid for</button>
-              <button class="add-btn subtle" id="startIOwe" type="button">+ Starting balance</button>
               <div class="subtotal">
                 <span id="iOweSubLabel">Total you owe Maria</span>
                 <span class="v debt tnum" id="iOweTotal">$0.00</span>
@@ -2408,18 +2407,6 @@
     document.getElementById("updatedToday").addEventListener("click", function () {
       S().lastUpdated = todayISO(); saveSettle(); recomputeSettle();
     });
-    // seed a running tab: a normal dated entry, so it clears with everything else on settle-up
-    function addStarting(key, boxId) {
-      var arr = S()[key];
-      var existing = arr.filter(function (e) { return e.desc === "Starting balance"; })[0];
-      if (!existing) arr.unshift({ desc: "Starting balance", date: todayISO(), price: "" });
-      renderLedger(boxId, arr);
-      touchSettle();
-      var first = document.querySelector("#" + boxId + " .ledger-row .amt input");
-      if (first) first.focus();
-    }
-    document.getElementById("startSheOwes").addEventListener("click", function () { addStarting("sheOwes", "sheOwes"); });
-    document.getElementById("startIOwe").addEventListener("click", function () { addStarting("iOwe", "iOwe"); });
     document.getElementById("venmoToday").addEventListener("click", function () {
       S().lastVenmo = todayISO(); saveSettle(); recomputeSettle();
     });
