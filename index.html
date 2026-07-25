@@ -400,6 +400,15 @@
   }
   .empty { color: var(--ink-faint); font-size: 14px; padding: 18px 0; text-align: center; }
 
+  /* the pay period after this one — informational, no effect on available cash */
+  .next-period { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line-strong); }
+  .next-period[hidden] { display: none; }
+  .next-period-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .np-title { font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+  .np-range { font-size: 12px; color: var(--ink-faint); }
+  .np-note { font-size: 12px; color: var(--ink-faint); margin: 4px 0 6px; }
+  .next-period .tl-item { opacity: .78; }
+
   .note-line { font-size: 12px; color: var(--ink-faint); margin: 2px 0 12px; }
 
   /* Net worth composition bar */
@@ -725,6 +734,18 @@
             <div class="card-head"><h2>Between now and payday</h2></div>
             <div class="card-body">
               <div class="timeline" id="timeline"></div>
+              <div class="next-period" id="nextPeriod" hidden>
+                <div class="next-period-head">
+                  <span class="np-title">Next pay period</span>
+                  <span class="np-range" id="npRange"></span>
+                </div>
+                <p class="np-note">Heads-up only — these land after your next paycheck.</p>
+                <div class="timeline" id="nextTimeline"></div>
+                <div class="subtotal">
+                  <span>Due that period</span>
+                  <span class="v tnum" id="npTotal">$0.00</span>
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -1610,6 +1631,7 @@
 
     renderPaycheck(payday, available);
     renderTimeline(upcoming, payday, checking);
+    renderNextPeriod(upcoming, payday);
     recomputeNetWorth();
     updateCardPayTotals();
   }
@@ -1661,6 +1683,40 @@
     cm.hidden = false; am.hidden = false;
     setText("estCheck", money(check.net));
     setText("afterPay", money(available + check.net));
+  }
+
+  // The window after the upcoming payday: informational only, so no running balance.
+  function renderNextPeriod(upcoming, payday) {
+    var box = document.getElementById("nextTimeline");
+    var wrap = document.getElementById("nextPeriod");
+    if (!box || !wrap) return;
+    var payday2 = nextPayday(payday); // strictly after payday, so this is the following one
+    var items = upcoming.filter(function (u) { return u.when > payday && u.when <= payday2; })
+                        .sort(function (a, b) { return a.when - b.when; });
+
+    if (!items.length) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+
+    var start = new Date(payday.getFullYear(), payday.getMonth(), payday.getDate() + 1);
+    setText("npRange", fmtShort(dateToISO(start)) + " – " + fmtShort(dateToISO(payday2)));
+
+    box.innerHTML = "";
+    var total = 0;
+    items.forEach(function (u) {
+      total += u.amount;
+      var item = el("div", "tl-item");
+      var date = el("div", "tl-date");
+      date.innerHTML = '<div class="d">' + u.when.getDate() + '</div><div class="m">' + MON[u.when.getMonth()] + '</div>';
+      var mid = el("div");
+      var moneyIn = u.amount < 0;
+      mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + '</div>' +
+                      '<div class="tl-sub">' + DAY[u.when.getDay()] + '</div>';
+      var amt = el("div", "tl-amt" + (moneyIn ? " in" : ""));
+      amt.textContent = (moneyIn ? "+" : "-") + money(Math.abs(u.amount));
+      item.appendChild(date); item.appendChild(mid); item.appendChild(amt);
+      box.appendChild(item);
+    });
+    setText("npTotal", money(total));
   }
 
   function renderTimeline(upcoming, payday, checking) {

@@ -7,6 +7,11 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.11.0] — 2026-07-25
+
+### Added
+- **"Next pay period" preview.** Below the timeline in the same card, a second block lists what falls in the window *after* your next payday — bills and card payments with their dates and a total. It's informational only: nothing there affects this period's available cash, and it's dimmed and labelled to make that clear. Hidden entirely when the next window is empty.
+
 ## [1.10.1] — 2026-07-25
 
 ### Changed
