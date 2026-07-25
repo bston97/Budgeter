@@ -326,6 +326,20 @@
   }
   .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
+  /* one-off entries can be money out (−) or money in (+) */
+  .col-head.oneoff-head { grid-template-columns: 1fr 44px 92px 34px; }
+  .line-row.oneoff-row { grid-template-columns: 1fr 44px 92px 34px; }
+  .dir-toggle {
+    width: 100%; border: 1px solid var(--line-strong); background: var(--surface-2);
+    font-family: inherit; font-size: 15px; font-weight: 700; line-height: 1;
+    padding: 9px 0; border-radius: 8px; cursor: pointer;
+  }
+  .dir-toggle.out { color: var(--crit); }
+  .dir-toggle.in { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .subtotal .v.money-in { color: var(--accent); }
+  .subtotal .v.money-out { color: var(--crit); }
+  .tl-amt.in { color: var(--accent); }
+
   /* credit card rows carry a due day */
   .col-head.cards-head { grid-template-columns: 1fr 78px 96px 34px; }
   .line-row.card-row { grid-template-columns: 1fr 78px 96px 34px; }
@@ -658,14 +672,14 @@
           </section>
 
           <section class="card">
-            <div class="card-head"><h2>Extra payments this period</h2></div>
+            <div class="card-head"><h2>Extra money in &amp; out</h2></div>
             <div class="card-body">
-              <p class="note-line">Anything else leaving checking this period that your balance doesn't already reflect — an ATM withdrawal, a one-time expense. Clears after payday.</p>
-              <div class="col-head accts"><span>What for</span><span class="r">Amount</span><span></span></div>
+              <p class="note-line">Anything your checking balance doesn't already reflect — an ATM withdrawal, a check you deposited, a Venmo, cashback. Tap <strong>−/+</strong> to switch between money out and money in. Clears after payday.</p>
+              <div class="col-head oneoff-head"><span>What for</span><span class="r">In/out</span><span class="r">Amount</span><span></span></div>
               <div id="oneoffs"></div>
-              <button class="add-btn" id="addOneoff" type="button">+ Add a one-off payment</button>
+              <button class="add-btn" id="addOneoff" type="button">+ Add an entry</button>
               <div class="subtotal">
-                <span>Total held this period</span>
+                <span>Net effect this period</span>
                 <span class="v tnum" id="oneoffTotal">$0.00</span>
               </div>
             </div>
@@ -991,6 +1005,8 @@
     if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
     if (typeof s.creditDate !== "string") s.creditDate = s.creditDate != null ? String(s.creditDate) : "";
     if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
+    // entries predate the in/out switch and were all money leaving checking
+    s.oneoffs.forEach(function (o) { if (o.dir !== "in" && o.dir !== "out") o.dir = "out"; });
     if (!s.pay || typeof s.pay !== "object") s.pay = {};
     ["mode", "rate", "per", "hours", "hoursUnit", "takeHome", "daysOff", "salary", "netCheck"].forEach(function (k) {
       if (typeof s.pay[k] !== "string") s.pay[k] = s.pay[k] != null ? String(s.pay[k]) : "";
@@ -1478,10 +1494,25 @@
     var box = document.getElementById("oneoffs");
     box.innerHTML = "";
     state.oneoffs.forEach(function (o, i) {
-      var row = el("div", "line-row");
-      var desc = el("input", null, { type: "text", placeholder: "What for (e.g. cash withdrawal)" });
+      var row = el("div", "line-row oneoff-row");
+      var desc = el("input", null, { type: "text", placeholder: "What for (e.g. ATM, Venmo, cashback)" });
       desc.value = o.desc || "";
       desc.addEventListener("input", function () { o.desc = desc.value; recompute(); });
+
+      var dirBtn = el("button", "dir-toggle " + (o.dir === "in" ? "in" : "out"), { type: "button" });
+      function paintDir() {
+        var isIn = o.dir === "in";
+        dirBtn.textContent = isIn ? "+" : "−";
+        dirBtn.className = "dir-toggle " + (isIn ? "in" : "out");
+        dirBtn.title = isIn ? "Money in — tap for money out" : "Money out — tap for money in";
+        dirBtn.setAttribute("aria-label", isIn ? "Money in" : "Money out");
+      }
+      paintDir();
+      dirBtn.addEventListener("click", function () {
+        o.dir = o.dir === "in" ? "out" : "in";
+        paintDir();   // repaint in place; re-rendering here would eat the next click
+        recompute();
+      });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
@@ -1494,7 +1525,7 @@
       del.innerHTML = "&times;";
       del.addEventListener("click", function () { state.oneoffs.splice(i, 1); renderOneoffs(); recompute(); });
 
-      row.appendChild(desc); row.appendChild(amtWrap); row.appendChild(del);
+      row.appendChild(desc); row.appendChild(dirBtn); row.appendChild(amtWrap); row.appendChild(del);
       box.appendChild(row);
     });
   }
@@ -1535,8 +1566,10 @@
     state.oneoffs.forEach(function (o) {
       var amt = num(o.amount);
       if (!o.desc && !amt) return;
+      // money in is carried as a negative "cost" so it lifts available cash instead of reducing it
+      var signed = o.dir === "in" ? -Math.abs(amt) : amt;
       var when = o.date ? isoToDate(o.date) : today;
-      upcoming.push({ name: o.desc || "Payment", amount: amt, when: when, beforePay: true, oneOff: true });
+      upcoming.push({ name: o.desc || "Entry", amount: signed, when: when, beforePay: true, oneOff: true });
     });
     state.cards.forEach(function (c) {
       var amt = num(c.payAmount);
@@ -1547,8 +1580,13 @@
     });
     upcoming.sort(function (a, b) { return a.when - b.when; });
 
-    var oneoffTotal = state.oneoffs.reduce(function (s, o) { return s + num(o.amount); }, 0);
-    document.getElementById("oneoffTotal").textContent = money(oneoffTotal);
+    var oneoffNet = state.oneoffs.reduce(function (s, o) {
+      var a = num(o.amount);
+      return s + (o.dir === "in" ? -Math.abs(a) : a);
+    }, 0);
+    var netEl = document.getElementById("oneoffTotal");
+    netEl.textContent = (oneoffNet > 0 ? "−" : oneoffNet < 0 ? "+" : "") + money(Math.abs(oneoffNet));
+    netEl.className = "v tnum" + (oneoffNet > 0 ? " money-out" : oneoffNet < 0 ? " money-in" : "");
 
     var billsBefore = upcoming.reduce(function (s, u) { return s + (u.beforePay ? u.amount : 0); }, 0);
     var available = checking - billsBefore;
@@ -1646,8 +1684,9 @@
         var pill = soon <= 3 ? ' <span class="pill soon">soon</span>' : '';
         mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + pill + '</div>' +
                         '<div class="tl-sub">' + (u.oneOff ? "one-off payment" : DAY[u.when.getDay()]) + '</div>';
-        var amt = el("div", "tl-amt");
-        amt.innerHTML = "-" + money(u.amount) +
+        var moneyIn = u.amount < 0;
+        var amt = el("div", "tl-amt" + (moneyIn ? " in" : ""));
+        amt.innerHTML = (moneyIn ? "+" : "-") + money(Math.abs(u.amount)) +
           '<span class="run ' + (running < 0 ? "neg" : "") + '">' + money(running) + ' left</span>';
         item.appendChild(date); item.appendChild(mid); item.appendChild(amt);
         tl.appendChild(item);
@@ -2088,7 +2127,7 @@
       state.bills.push({ name: "", amount: "", due: "" }); renderBills(); recompute();
     });
     document.getElementById("addOneoff").addEventListener("click", function () {
-      state.oneoffs.push({ desc: "", amount: "", date: todayISO(), periodEnd: dateToISO(nextPayday(new Date())) });
+      state.oneoffs.push({ desc: "", amount: "", dir: "out", date: todayISO(), periodEnd: dateToISO(nextPayday(new Date())) });
       renderOneoffs(); recompute();
     });
     document.getElementById("addCard").addEventListener("click", function () {

@@ -15,6 +15,9 @@ Live app: https://bston97.github.io/Budgeter/
 ### Changed
 - Card payments were previously logged as one-off payments linked to a card. That dropdown is retired — **card payments now have one home**, and the "Extra payments" section is purely for ad-hoc items (ATM withdrawals, one-time expenses), with shorter wording to match.
 
+### Fixed
+- **"Extra money in & out"** (formerly "Extra payments"): each entry now has a **−/+ toggle**, so the section covers deposits, Venmo, and cashback — not just money leaving checking. Money in raises your available cash instead of lowering it, shows as green on the timeline, and the section's total reflects the net of everything entered.
+
 ## [1.9.0] — 2026-07-25
 
 ### Added
