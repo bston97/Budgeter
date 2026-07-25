@@ -12,6 +12,7 @@ Live app: https://bston97.github.io/Budgeter/
 ### Added
 - **Two-period projection.** The Next pay period block now chains the whole picture — what's left today, plus your next check, minus what that period costs — into a single "Projected by [date], before that check" figure. It answers whether you coast into the payday *after* next, not just the next one. Turns red if you'd land short, and hides itself when no paycheck is set up (there'd be nothing to project).
 - **Split-in-half button on settle-up entries.** Enter the full bill you paid, tap **½**, and it halves to the other person's share — rounded to the cent, with no mental math.
+- **Payday rollover nudge.** The first time you open the app after a payday passes, a bar appears on the Runway tab pointing out that your checking balance is probably stale. Typing your real bank balance is the primary action; the figure the app projected for that payday is offered underneath, and tapping "use it" only fills the box — you still confirm. Dismissible, shown once per payday, and never fires retroactively when you first set the app up.
 
 ## [1.15.0] — 2026-07-25
 
