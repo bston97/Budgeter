@@ -7,6 +7,11 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.7.0] — 2026-07-24
+
+### Added
+- **Shared Settle-up ledger.** The Settle-up tab can now be a single record shared between two specific accounts — editable and visible **only** to those accounts (enforced in Supabase). Everyone else keeps their own private settle-up automatically. Both participants are **named** (editable in-app), so the labels read correctly for whoever is viewing it (e.g. "Brandon paid — Maria owes Brandon"), and edits sync between the two like the rest of the app. Requires a one-time Supabase table + allowlist setup.
+
 ## [1.6.0] — 2026-07-24
 
 ### Added

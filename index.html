@@ -421,6 +421,9 @@
     cursor: pointer; font-family: inherit; white-space: nowrap;
   }
   .track-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .settle-names { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-strong); flex-wrap: wrap; }
+  .settle-names input { width: auto; max-width: 130px; font-size: 13px; padding: 7px 10px; }
+  .settle-names .amp { color: var(--ink-faint); font-weight: 600; }
 
   footer.note {
     margin-top: 26px; text-align: center; color: var(--ink-faint); font-size: 12px;
@@ -678,7 +681,7 @@
     <div class="panel" id="panel-settle" role="tabpanel" aria-labelledby="tab-settle">
       <section class="card">
         <div class="hero" id="settleHero">
-          <div class="eyebrow">Settle up with Maria</div>
+          <div class="eyebrow" id="settleEyebrow">Settle up with Maria</div>
           <p class="amount tnum" id="settleNet">$0.00</p>
           <div class="amount-label" id="settleWho">you're all square</div>
           <div class="compo">
@@ -687,8 +690,8 @@
               <div class="seg-debt" id="segIOwe" style="width:50%"></div>
             </div>
             <div class="legend">
-              <div class="item"><span class="dot asset"></span>Maria owes you <span class="v tnum" id="sheOwesHero">$0.00</span></div>
-              <div class="item"><span class="dot debt"></span>You owe Maria <span class="v tnum" id="iOweHero">$0.00</span></div>
+              <div class="item"><span class="dot asset"></span><span id="sheOwesLegendLbl">Maria owes you</span> <span class="v tnum" id="sheOwesHero">$0.00</span></div>
+              <div class="item"><span class="dot debt"></span><span id="iOweLegendLbl">You owe Maria</span> <span class="v tnum" id="iOweHero">$0.00</span></div>
             </div>
           </div>
           <div class="track">
@@ -704,6 +707,11 @@
               </div>
             </div>
           </div>
+          <div class="settle-names">
+            <input type="text" id="nameA" placeholder="Your name" />
+            <span class="amp">&amp;</span>
+            <input type="text" id="nameB" placeholder="Their name" />
+          </div>
         </div>
       </section>
 
@@ -711,7 +719,7 @@
         <div class="col-left">
           <section class="card">
             <div class="card-head">
-              <h2>You paid — Maria owes you</h2>
+              <h2 id="sheOwesTitle">You paid — Maria owes you</h2>
               <span class="head-total asset tnum" id="sheOwesHead">$0.00</span>
             </div>
             <div class="card-body">
@@ -719,7 +727,7 @@
               <div id="sheOwes"></div>
               <button class="add-btn" id="addSheOwes" type="button">+ Add something you paid for</button>
               <div class="subtotal">
-                <span>Total Maria owes you</span>
+                <span id="sheOwesSubLabel">Total Maria owes you</span>
                 <span class="v asset tnum" id="sheOwesTotal">$0.00</span>
               </div>
             </div>
@@ -729,7 +737,7 @@
         <div class="col-right">
           <section class="card">
             <div class="card-head">
-              <h2>Maria paid — you owe her</h2>
+              <h2 id="iOweTitle">Maria paid — you owe her</h2>
               <span class="head-total debt tnum" id="iOweHead">$0.00</span>
             </div>
             <div class="card-body">
@@ -737,7 +745,7 @@
               <div id="iOwe"></div>
               <button class="add-btn" id="addIOwe" type="button">+ Add something she paid for</button>
               <div class="subtotal">
-                <span>Total you owe Maria</span>
+                <span id="iOweSubLabel">Total you owe Maria</span>
                 <span class="v debt tnum" id="iOweTotal">$0.00</span>
               </div>
             </div>
@@ -794,7 +802,7 @@
         { name: "401(k)", balance: "", type: "account" },
         { name: "Savings", balance: "", type: "account" }
       ],
-      settle: { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "" }
+      settle: { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "", nameA: "You", nameB: "Maria" }
     };
   }
   function migrate(s) {
@@ -808,11 +816,7 @@
       { name: "Robinhood", balance: "" }, { name: "401(k)", balance: "" }, { name: "Savings", balance: "" }
     ];
     s.assets.forEach(function (a) { if (!a.type) a.type = a.date ? "report" : "account"; });
-    if (!s.settle || typeof s.settle !== "object") s.settle = { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "" };
-    if (!Array.isArray(s.settle.sheOwes)) s.settle.sheOwes = [];
-    if (!Array.isArray(s.settle.iOwe)) s.settle.iOwe = [];
-    if (typeof s.settle.lastUpdated !== "string") s.settle.lastUpdated = "";
-    if (typeof s.settle.lastVenmo !== "string") s.settle.lastVenmo = "";
+    s.settle = normSettle(s.settle);
     if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
     if (typeof s.creditDate !== "string") s.creditDate = s.creditDate != null ? String(s.creditDate) : "";
     if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
@@ -1378,9 +1382,69 @@
     return MON[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
   }
 
+  // ---------- shared settle-up ledger (two allow-listed accounts) ----------
+  var SHARED_ID = "household";
+  var sharedMode = false, sharedData = null, sharedTimer = null;
+  function normSettle(x) {
+    if (!x || typeof x !== "object") x = {};
+    if (!Array.isArray(x.sheOwes)) x.sheOwes = [];
+    if (!Array.isArray(x.iOwe)) x.iOwe = [];
+    if (typeof x.lastUpdated !== "string") x.lastUpdated = "";
+    if (typeof x.lastVenmo !== "string") x.lastVenmo = "";
+    if (typeof x.nameA !== "string" || !x.nameA) x.nameA = "You";
+    if (typeof x.nameB !== "string" || !x.nameB) x.nameB = "Maria";
+    return x;
+  }
+  function S() { return sharedMode ? sharedData : state.settle; } // active settle source
+  function saveSettle() { if (sharedMode) scheduleSharedSave(); else save(); }
+  function scheduleSharedSave() {
+    if (!sb || !sharedMode) return;
+    setSync("saving");
+    clearTimeout(sharedTimer);
+    sharedTimer = setTimeout(pushShared, 700);
+  }
+  function pushShared() {
+    if (!sb || !sharedMode) return;
+    sb.from("shared_settle").upsert({ id: SHARED_ID, data: sharedData, updated_at: new Date().toISOString() })
+      .then(function (res) { setSync(res && res.error ? "error" : "saved"); })
+      .catch(function () { setSync("error"); });
+  }
+  // members of the shared ledger can read the row (RLS); everyone else gets nothing and stays on their private ledger
+  function loadSharedSettle() {
+    if (!sb || !user) return;
+    sb.from("shared_settle").select("data").eq("id", SHARED_ID).maybeSingle()
+      .then(function (res) {
+        if (res && !res.error && res.data && res.data.data) { sharedMode = true; sharedData = normSettle(res.data.data); }
+        else { sharedMode = false; sharedData = null; }
+        applySettleMode();
+      })
+      .catch(function () { sharedMode = false; sharedData = null; applySettleMode(); });
+  }
+  function applySettleMode() {
+    document.getElementById("nameA").value = S().nameA;
+    document.getElementById("nameB").value = S().nameB;
+    renderLedger("sheOwes", S().sheOwes);
+    renderLedger("iOwe", S().iOwe);
+    recomputeSettle();
+  }
+  function setText(id, t) { var e = document.getElementById(id); if (e) e.textContent = t; }
+  function ov(name) { return String(name).toLowerCase() === "you" ? "owe" : "owes"; } // subject-verb agreement for "You"
+  function updateSettleLabels() {
+    var A = S().nameA || "You", B = S().nameB || "Maria";
+    setText("settleEyebrow", "Settle up · " + A + " & " + B + (sharedMode ? " · shared" : ""));
+    setText("sheOwesTitle", A + " paid — " + B + " " + ov(B) + " " + A);
+    setText("iOweTitle", B + " paid — " + A + " " + ov(A) + " " + B);
+    setText("sheOwesSubLabel", "Total " + B + " " + ov(B) + " " + A);
+    setText("iOweSubLabel", "Total " + A + " " + ov(A) + " " + B);
+    setText("sheOwesLegendLbl", B + " " + ov(B) + " " + A);
+    setText("iOweLegendLbl", A + " " + ov(A) + " " + B);
+    var ab = document.getElementById("addSheOwes"); if (ab) ab.textContent = "+ Add something " + A + " paid";
+    var bb = document.getElementById("addIOwe"); if (bb) bb.textContent = "+ Add something " + B + " paid";
+  }
+
   function touchSettle() {
-    state.settle.lastUpdated = todayISO();
-    save();
+    S().lastUpdated = todayISO();
+    saveSettle();
     recomputeSettle();
   }
 
@@ -1416,9 +1480,11 @@
   function sumPrices(arr) { return arr.reduce(function (s, it) { return s + num(it.price); }, 0); }
 
   function recomputeSettle() {
-    var sheOwes = sumPrices(state.settle.sheOwes);
-    var iOwe = sumPrices(state.settle.iOwe);
-    var net = sheOwes - iOwe; // positive => Maria owes you
+    updateSettleLabels();
+    var A = S().nameA || "You", B = S().nameB || "Maria";
+    var sheOwes = sumPrices(S().sheOwes);
+    var iOwe = sumPrices(S().iOwe);
+    var net = sheOwes - iOwe; // positive => B owes A
 
     document.getElementById("sheOwesTotal").textContent = money(sheOwes);
     document.getElementById("sheOwesHead").textContent = money(sheOwes);
@@ -1435,17 +1501,17 @@
     hero.classList.toggle("short-ok", net >= 0);
 
     var who = document.getElementById("settleWho");
-    if (Math.abs(net) < 0.005) who.textContent = "you're all square";
-    else if (net > 0) who.textContent = "Maria owes you the difference";
-    else who.textContent = "you owe Maria the difference";
+    if (Math.abs(net) < 0.005) who.textContent = "all square";
+    else if (net > 0) who.textContent = B + " " + ov(B) + " " + A + " the difference";
+    else who.textContent = A + " " + ov(A) + " " + B + " the difference";
 
     var denom = sheOwes + iOwe;
     var sPct = denom > 0 ? (sheOwes / denom) * 100 : 50;
     document.getElementById("segSheOwes").style.width = sPct + "%";
     document.getElementById("segIOwe").style.width = (100 - sPct) + "%";
 
-    document.getElementById("lastUpdated").textContent = fmtISO(state.settle.lastUpdated);
-    document.getElementById("lastVenmo").value = state.settle.lastVenmo || "";
+    document.getElementById("lastUpdated").textContent = fmtISO(S().lastUpdated);
+    document.getElementById("lastVenmo").value = S().lastVenmo || "";
   }
 
   function onWorthChange() { save(); recomputeNetWorth(); updateOneoffAfters(); }
@@ -1461,8 +1527,10 @@
     renderAccounts("cards", state.cards, "Card name", onWorthChange);
     renderAccounts("loans", state.loans, "Loan name", onWorthChange);
     renderAssets();
-    renderLedger("sheOwes", state.settle.sheOwes);
-    renderLedger("iOwe", state.settle.iOwe);
+    document.getElementById("nameA").value = S().nameA;
+    document.getElementById("nameB").value = S().nameB;
+    renderLedger("sheOwes", S().sheOwes);
+    renderLedger("iOwe", S().iOwe);
     recompute();
     recomputeSettle();
     recomputeCredit();
@@ -1496,18 +1564,24 @@
       state.assets.push({ name: "", balance: "", type: "account" }); renderAssets(); recomputeNetWorth();
     });
     document.getElementById("addSheOwes").addEventListener("click", function () {
-      state.settle.sheOwes.push({ desc: "", date: todayISO(), price: "" });
-      renderLedger("sheOwes", state.settle.sheOwes); touchSettle();
+      S().sheOwes.push({ desc: "", date: todayISO(), price: "" });
+      renderLedger("sheOwes", S().sheOwes); touchSettle();
     });
     document.getElementById("addIOwe").addEventListener("click", function () {
-      state.settle.iOwe.push({ desc: "", date: todayISO(), price: "" });
-      renderLedger("iOwe", state.settle.iOwe); touchSettle();
+      S().iOwe.push({ desc: "", date: todayISO(), price: "" });
+      renderLedger("iOwe", S().iOwe); touchSettle();
     });
     document.getElementById("lastVenmo").addEventListener("input", function () {
-      state.settle.lastVenmo = this.value; save();
+      S().lastVenmo = this.value; saveSettle();
     });
     document.getElementById("venmoToday").addEventListener("click", function () {
-      state.settle.lastVenmo = todayISO(); save(); recomputeSettle();
+      S().lastVenmo = todayISO(); saveSettle(); recomputeSettle();
+    });
+    document.getElementById("nameA").addEventListener("input", function () {
+      S().nameA = this.value; saveSettle(); recomputeSettle();
+    });
+    document.getElementById("nameB").addEventListener("input", function () {
+      S().nameB = this.value; saveSettle(); recomputeSettle();
     });
     document.getElementById("reset").addEventListener("click", function () {
       if (confirm("Clear ALL saved data — checking, bills, extra payments, credit score, debts, assets, and the Settle-up ledger with Maria? This clears it everywhere your account syncs and can't be undone.")) {
@@ -1594,6 +1668,7 @@
         suppressSave = true;
         try { localStorage.removeItem(KEY); } catch (e) {}
         state = migrate(defaults());
+        sharedMode = false; sharedData = null;
         suppressSave = false;
         showAuth();
       });
@@ -1607,7 +1682,7 @@
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "hidden") flushPending();
       // returning to the tab with nothing unsaved: re-pull so edits from another device show up
-      else if (document.visibilityState === "visible" && user && !pendingSave) pullCloud(user);
+      else if (document.visibilityState === "visible" && user && !pendingSave) { pullCloud(user); loadSharedSettle(); }
     });
     window.addEventListener("pagehide", flushPending);
   }
@@ -1725,6 +1800,7 @@
       ? "Change your password:"
       : "Set a password so you can sign in without the email link:";
     pullCloud(u);
+    loadSharedSettle();
   }
   function pullCloud(u) {
     setSync("loading");
