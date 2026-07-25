@@ -992,9 +992,9 @@
       ],
       loans: [{ name: "Car loan", balance: "" }],
       assets: [
-        { name: "Robinhood", balance: "", type: "investment" },
-        { name: "401(k)", balance: "", type: "account" },
-        { name: "Savings", balance: "", type: "account" }
+        { name: "Robinhood", balance: "", type: "brokerage" },
+        { name: "401(k)", balance: "", type: "retirement" },
+        { name: "Savings", balance: "", type: "savings" }
       ],
       settle: { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "", nameA: "You", nameB: "Maria" }
     };
@@ -1021,7 +1021,12 @@
     if (!Array.isArray(s.assets)) s.assets = [
       { name: "Robinhood", balance: "" }, { name: "401(k)", balance: "" }, { name: "Savings", balance: "" }
     ];
-    s.assets.forEach(function (a) { if (!a.type) a.type = a.date ? "report" : "account"; });
+    // old three-type scheme -> named types with identical behavior
+    var OLD_TYPES = { account: "savings", investment: "brokerage", report: "valuable" };
+    s.assets.forEach(function (a) {
+      if (!a.type) a.type = a.date ? "valuable" : "savings";
+      if (OLD_TYPES[a.type]) a.type = OLD_TYPES[a.type];
+    });
     s.settle = normSettle(s.settle);
     if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
     if (typeof s.creditDate !== "string") s.creditDate = s.creditDate != null ? String(s.creditDate) : "";
@@ -1377,17 +1382,37 @@
     if (head) head.textContent = total > 0 ? money(total) : "";
   }
 
-  var ASSET_TYPES = [
-    { v: "account", label: "Account" },
-    { v: "investment", label: "Investment" },
-    { v: "report", label: "Report" }
+  // Grouped so the dropdown itself explains what each type does to the "as of" column.
+  var ASSET_GROUPS = [
+    { label: "Dates itself when you update", behavior: "auto", types: [
+      { v: "checking", label: "Checking" },
+      { v: "savings", label: "Savings" },
+      { v: "cash", label: "Cash" },
+      { v: "other", label: "Other" }
+    ] },
+    { label: "Dates itself + shows ▲▼", behavior: "trend", types: [
+      { v: "brokerage", label: "Brokerage" },
+      { v: "retirement", label: "Retirement / 401(k)" },
+      { v: "crypto", label: "Crypto" }
+    ] },
+    { label: "You set the date", behavior: "manual", types: [
+      { v: "vehicle", label: "Vehicle" },
+      { v: "realestate", label: "Real estate" },
+      { v: "valuable", label: "Other valuable" }
+    ] }
   ];
-  // Assets get a type that drives the 3rd column: report=editable date, account=auto date, investment=auto date + trend arrow
+  var ASSET_BEHAVIOR = {};
+  ASSET_GROUPS.forEach(function (g) {
+    g.types.forEach(function (t) { ASSET_BEHAVIOR[t.v] = g.behavior; });
+  });
+  function assetBehavior(type) { return ASSET_BEHAVIOR[type] || "auto"; }
+
   function renderAssets() {
     var box = document.getElementById("assets");
     box.innerHTML = "";
     state.assets.forEach(function (c, i) {
-      var type = c.type || "account";
+      var type = c.type || "savings";
+      var behavior = assetBehavior(type);
       var row = el("div", "line-row asset-row");
 
       var name = el("input", "as-name", { type: "text", placeholder: "Account name" });
@@ -1402,9 +1427,9 @@
       amt.addEventListener("focus", function () { focusVal = amt.value; });
       amt.addEventListener("input", function () { c.balance = amt.value; recomputeNetWorth(); save(); });
       amt.addEventListener("blur", function () {
-        if (type !== "account" && type !== "investment") return;
+        if (behavior === "manual") return; // date is theirs to set
         if (num(amt.value) === num(focusVal)) return; // only stamp when the value actually changed
-        if (type === "investment") c.prev = focusVal; // remember the value before this change for the trend arrow
+        if (behavior === "trend") c.prev = focusVal; // remember the value before this change for the trend arrow
         c.date = todayISO();
         focusVal = amt.value; // reset baseline so a second blur without a change won't re-stamp
         save();
@@ -1412,12 +1437,17 @@
       });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
-      var sel = el("select", "as-type", { "aria-label": "Asset type" });
-      ASSET_TYPES.forEach(function (t) {
-        var o = el("option", null, { value: t.v });
-        o.textContent = t.label;
-        if (t.v === type) o.selected = true;
-        sel.appendChild(o);
+      var sel = el("select", "as-type", { "aria-label": "Asset type",
+        title: "Type decides the 'as of' column:\n• Checking / Savings / Cash / Other — dates itself when you change the value\n• Brokerage / Retirement / Crypto — dates itself and shows ▲▼ since the last change\n• Vehicle / Real estate / Other valuable — you set the date (e.g. a Carfax or appraisal)" });
+      ASSET_GROUPS.forEach(function (g) {
+        var grp = el("optgroup", null, { label: g.label });
+        g.types.forEach(function (t) {
+          var o = el("option", null, { value: t.v });
+          o.textContent = t.label;
+          if (t.v === type) o.selected = true;
+          grp.appendChild(o);
+        });
+        sel.appendChild(grp);
       });
       sel.addEventListener("change", function () { c.type = sel.value; save(); renderAssets(); });
 
@@ -1425,18 +1455,18 @@
       function renderStatus() {
         status.innerHTML = "";
         status.className = "as-status";
-        if (type === "report") {
-          var d = el("input", "as-of-date", { type: "date", title: "As-of date (optional)" });
+        if (behavior === "manual") {
+          var d = el("input", "as-of-date", { type: "date", title: "As-of date (e.g. the date on the report or appraisal)" });
           d.value = c.date || "";
           d.addEventListener("input", function () { c.date = d.value; save(); });
           status.appendChild(d);
         } else {
           status.classList.add("auto");
-          if (type === "investment") status.classList.add("invest");
-          var dateSpan = el("span", "as-date-text");
+          if (behavior === "trend") status.classList.add("invest");
+          var dateSpan = el("span", "as-date-text", { title: "Updated automatically when you change the value" });
           dateSpan.textContent = c.date ? fmtShort(c.date) : "—";
           status.appendChild(dateSpan);
-          if (type === "investment" && c.prev && c.balance !== "") {
+          if (behavior === "trend" && c.prev && c.balance !== "") {
             var diff = num(c.balance) - num(c.prev);
             if (diff !== 0) {
               var arrow = el("span", "trend " + (diff > 0 ? "up" : "down"));
@@ -2194,7 +2224,7 @@
       state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();
     });
     document.getElementById("addAsset").addEventListener("click", function () {
-      state.assets.push({ name: "", balance: "", type: "account" }); renderAssets(); recomputeNetWorth();
+      state.assets.push({ name: "", balance: "", type: "savings" }); renderAssets(); recomputeNetWorth();
     });
     document.getElementById("addSheOwes").addEventListener("click", function () {
       S().sheOwes.push({ desc: "", date: todayISO(), price: "" });

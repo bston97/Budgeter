@@ -7,6 +7,11 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.12.0] — 2026-07-25
+
+### Changed
+- **Asset types are now self-explanatory.** The vague "Account / Investment / Report" is replaced by ten named types grouped by what they actually do, so the dropdown explains itself without extra text: **Dates itself when you update** (Checking, Savings, Cash, Other), **Dates itself + shows ▲▼** (Brokerage, Retirement / 401(k), Crypto), and **You set the date** (Vehicle, Real estate, Other valuable). A tooltip on the dropdown covers the detail. Existing assets migrate automatically with identical behavior — nothing to redo.
+
 ## [1.11.0] — 2026-07-25
 
 ### Added
