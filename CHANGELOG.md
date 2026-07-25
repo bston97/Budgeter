@@ -7,6 +7,12 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.13.0] — 2026-07-25
+
+### Added
+- **Starting balances for the settle-up tab.** A "+ Starting balance" button on each side seeds the running tab with what's already owed, so you can carry over a total you've been tracking elsewhere. It's a normal dated entry, so it's visible in the list and clears with everything else when you settle up. Clicking it twice won't create a duplicate.
+- **"Last updated" is now editable.** It still stamps itself whenever you change the lists, but you can backdate it to when you actually reconciled, with a "Today" button to snap it back.
+
 ## [1.12.0] — 2026-07-25
 
 ### Changed

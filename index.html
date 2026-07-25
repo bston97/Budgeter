@@ -325,6 +325,7 @@
     font-size: 13px; font-weight: 600; padding: 9px; border-radius: 9px; cursor: pointer;
   }
   .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .add-btn.subtle { margin-top: 6px; border-style: dotted; font-size: 12px; color: var(--ink-faint); padding: 7px; }
 
   /* one-off entries can be money out (−) or money in (+) */
   .col-head.oneoff-head { grid-template-columns: 1fr 44px 92px 34px; }
@@ -875,7 +876,10 @@
           <div class="track">
             <div class="track-item">
               <div class="k">Last updated</div>
-              <div class="v tnum" id="lastUpdated">—</div>
+              <div class="track-set">
+                <input type="date" id="lastUpdated" title="Stamps itself when you edit the lists — change it to match when you last reconciled on paper" />
+                <button class="track-btn" id="updatedToday" type="button">Today</button>
+              </div>
             </div>
             <div class="track-item">
               <div class="k">Last Venmo'd</div>
@@ -908,6 +912,7 @@
               <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
               <div id="sheOwes"></div>
               <button class="add-btn" id="addSheOwes" type="button">+ Add something you paid for</button>
+              <button class="add-btn subtle" id="startSheOwes" type="button">+ Starting balance</button>
               <div class="subtotal">
                 <span id="sheOwesSubLabel">Total Maria owes you</span>
                 <span class="v asset tnum" id="sheOwesTotal">$0.00</span>
@@ -926,6 +931,7 @@
               <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
               <div id="iOwe"></div>
               <button class="add-btn" id="addIOwe" type="button">+ Add something she paid for</button>
+              <button class="add-btn subtle" id="startIOwe" type="button">+ Starting balance</button>
               <div class="subtotal">
                 <span id="iOweSubLabel">Total you owe Maria</span>
                 <span class="v debt tnum" id="iOweTotal">$0.00</span>
@@ -2153,7 +2159,7 @@
     document.getElementById("segSheOwes").style.width = sPct + "%";
     document.getElementById("segIOwe").style.width = (100 - sPct) + "%";
 
-    document.getElementById("lastUpdated").textContent = fmtISO(S().lastUpdated);
+    document.getElementById("lastUpdated").value = S().lastUpdated || "";
     document.getElementById("lastVenmo").value = S().lastVenmo || "";
   }
 
@@ -2237,6 +2243,24 @@
     document.getElementById("lastVenmo").addEventListener("input", function () {
       S().lastVenmo = this.value; saveSettle();
     });
+    document.getElementById("lastUpdated").addEventListener("input", function () {
+      S().lastUpdated = this.value; saveSettle(); // manual override, e.g. backdating to your paper reconcile
+    });
+    document.getElementById("updatedToday").addEventListener("click", function () {
+      S().lastUpdated = todayISO(); saveSettle(); recomputeSettle();
+    });
+    // seed a running tab: a normal dated entry, so it clears with everything else on settle-up
+    function addStarting(key, boxId) {
+      var arr = S()[key];
+      var existing = arr.filter(function (e) { return e.desc === "Starting balance"; })[0];
+      if (!existing) arr.unshift({ desc: "Starting balance", date: todayISO(), price: "" });
+      renderLedger(boxId, arr);
+      touchSettle();
+      var first = document.querySelector("#" + boxId + " .ledger-row .amt input");
+      if (first) first.focus();
+    }
+    document.getElementById("startSheOwes").addEventListener("click", function () { addStarting("sheOwes", "sheOwes"); });
+    document.getElementById("startIOwe").addEventListener("click", function () { addStarting("iOwe", "iOwe"); });
     document.getElementById("venmoToday").addEventListener("click", function () {
       S().lastVenmo = todayISO(); saveSettle(); recomputeSettle();
     });
