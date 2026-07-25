@@ -345,6 +345,25 @@
   .col-head.cards-head { grid-template-columns: 1fr 78px 96px 34px; }
   .line-row.card-row { grid-template-columns: 1fr 78px 96px 34px; }
 
+  /* loan rows carry a fixed payment and a due day */
+  .col-head.loans-head { grid-template-columns: 1fr 76px 76px 96px 30px; }
+  .line-row.loan-row {
+    display: grid; grid-template-columns: 1fr 76px 76px 96px 30px; gap: 8px; align-items: center;
+    grid-template-areas: "name bal pay due del";
+  }
+  .loan-row .ln-name { grid-area: name; }
+  .loan-row .ln-bal { grid-area: bal; }
+  .loan-row .ln-pay { grid-area: pay; }
+  .loan-row .ln-due { grid-area: due; }
+  .loan-row .ln-del { grid-area: del; }
+  @media (max-width: 860px) {
+    .col-head.loans-head { display: none; }
+    .line-row.loan-row {
+      grid-template-columns: 1fr 76px 30px;
+      grid-template-areas: "name bal del" "pay due due";
+    }
+  }
+
   /* card payments due this period */
   .cardpay-row {
     display: grid; grid-template-columns: 1fr 96px; gap: 8px 10px; align-items: center;
@@ -356,6 +375,7 @@
   .cp-due.soon { color: var(--warn); font-weight: 700; }
   .cp-due.next { color: var(--ink-faint); }
   .cardpay-row .amt input { padding-left: 20px; font-variant-numeric: tabular-nums; }
+  .cp-fixed { text-align: right; font-weight: 650; font-size: 14px; color: var(--ink-soft); padding-right: 2px; }
   .cp-after { grid-column: 1 / -1; font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-top: -2px; }
   .cp-after.neg { color: var(--crit); }
 
@@ -672,11 +692,11 @@
 
           <section class="card" id="cardPayCard">
             <div class="card-head">
-              <h2>Card payments</h2>
+              <h2>Debt payments</h2>
               <span class="head-total debt tnum" id="cardPayTotal"></span>
             </div>
             <div class="card-body">
-              <p class="note-line" id="cardPayNote">Give each credit card a due day on the Net worth tab and it appears here. Enter the amount once you know it — it clears itself after the due date passes.</p>
+              <p class="note-line" id="cardPayNote">Give a credit card or loan a due day on the Net worth tab and it appears here. Card amounts are yours to fill in each cycle; loan payments are fixed and come off the loan balance once the date passes.</p>
               <div id="cardPayments"></div>
             </div>
           </section>
@@ -843,7 +863,7 @@
             </div>
             <div class="card-body">
               <p class="note-line">Auto, student, personal, mortgage — remaining balance.</p>
-              <div class="col-head accts"><span>Loan</span><span class="r">Balance owed</span><span></span></div>
+              <div class="col-head loans-head"><span>Loan</span><span class="r">Balance</span><span class="r">Payment</span><span class="r">Due day</span><span></span></div>
               <div id="loans"></div>
               <button class="add-btn" id="addLoan" type="button">+ Add loan</button>
               <div class="subtotal">
@@ -1024,6 +1044,14 @@
       if (!isNaN(n) && n > 28) b.due = "EOM";
     });
     if (!Array.isArray(s.loans)) s.loans = [{ name: "Car loan", balance: "" }];
+    s.loans.forEach(function (l) {
+      if (!l.id) l.id = uid();
+      ["payment", "dueDay", "lastApplied"].forEach(function (k) {
+        if (typeof l[k] !== "string") l[k] = l[k] != null ? String(l[k]) : "";
+      });
+      var dn = parseInt(l.dueDay, 10);
+      if (!isNaN(dn) && dn > 28) l.dueDay = "EOM";
+    });
     if (!Array.isArray(s.assets)) s.assets = [
       { name: "Robinhood", balance: "" }, { name: "401(k)", balance: "" }, { name: "Savings", balance: "" }
     ];
@@ -1150,6 +1178,50 @@
     if (!card.dueDay) return null;
     return billOccurrence({ due: card.dueDay }, today);
   }
+  // the due-day occurrence within a specific month, clamped like bills (EOM = last day)
+  function occurrenceInMonth(dueDay, y, m) {
+    var lastDay = new Date(y, m + 1, 0).getDate();
+    var day = String(dueDay).toUpperCase() === "EOM" ? lastDay : Math.min(parseInt(dueDay, 10) || 1, lastDay);
+    return new Date(y, m, day);
+  }
+  function occurrenceAfter(dueDay, after) {
+    var o = occurrenceInMonth(dueDay, after.getFullYear(), after.getMonth());
+    return o > after ? o : occurrenceInMonth(dueDay, after.getFullYear(), after.getMonth() + 1);
+  }
+  function mostRecentOccurrence(dueDay, today) {
+    var o = occurrenceInMonth(dueDay, today.getFullYear(), today.getMonth());
+    return o <= today ? o : occurrenceInMonth(dueDay, today.getFullYear(), today.getMonth() - 1);
+  }
+
+  // Once a loan's payment date passes, the payment really comes off the balance.
+  // Each occurrence is applied exactly once, tracked by lastApplied.
+  function applyDueLoanPayments() {
+    var today = stripTime(new Date());
+    var changed = false;
+    state.loans.forEach(function (l) {
+      if (!l.dueDay) return;
+      // first time we see a due day, just mark where we are — never charge retroactively
+      if (!l.lastApplied) {
+        l.lastApplied = dateToISO(mostRecentOccurrence(l.dueDay, today));
+        changed = true;
+        return;
+      }
+      var pay = num(l.payment);
+      if (pay <= 0) return;
+      var last = stripTime(isoToDate(l.lastApplied));
+      var guard = 0;
+      while (guard++ < 120) { // catches up if the app wasn't opened for months
+        var next = occurrenceAfter(l.dueDay, last);
+        if (next > today) break;
+        l.balance = Math.max(0, num(l.balance) - pay).toFixed(2);
+        l.lastApplied = dateToISO(next);
+        last = next;
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   // once a card's due date has passed, drop the amount so next cycle starts blank
   function clearOldCardPayments() {
     var t = stripTime(new Date()), changed = false;
@@ -1320,6 +1392,71 @@
     });
   }
 
+  // Loans: fixed monthly payment on a due day; the payment comes off the balance once that date passes.
+  function renderLoans() {
+    var box = document.getElementById("loans");
+    box.innerHTML = "";
+    state.loans.forEach(function (l, i) {
+      var row = el("div", "line-row loan-row");
+
+      var name = el("input", "ln-name", { type: "text", placeholder: "Loan name" });
+      name.value = l.name;
+      name.addEventListener("input", function () { l.name = name.value; save(); renderCardPayments(); });
+
+      var balWrap = el("div", "amt ln-bal");
+      var bcur = el("span", "cur"); bcur.textContent = "$";
+      var bal = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      bal.value = l.balance;
+      bal.addEventListener("input", function () { l.balance = bal.value; onWorthChange(); });
+      balWrap.appendChild(bcur); balWrap.appendChild(bal);
+
+      var payWrap = el("div", "amt ln-pay");
+      var pcur = el("span", "cur"); pcur.textContent = "$";
+      var pay = el("input", null, { type: "text", inputmode: "decimal", placeholder: "pmt" , title: "Fixed monthly payment" });
+      pay.value = l.payment || "";
+      pay.addEventListener("input", function () { l.payment = pay.value; save(); renderCardPayments(); recompute(); });
+      payWrap.appendChild(pcur); payWrap.appendChild(pay);
+
+      var isEom = String(l.dueDay).toUpperCase() === "EOM";
+      var dueWrap = el("div", "due-cell ln-due");
+      var due = el("input", null, { type: "number", min: "1", max: "28", placeholder: "—", title: "Payment due day (1–28), or EOM" });
+      due.value = isEom ? "" : (l.dueDay || "");
+      due.disabled = isEom;
+      function commitDue() {
+        if (!l.lastApplied && l.dueDay) l.lastApplied = dateToISO(mostRecentOccurrence(l.dueDay, stripTime(new Date())));
+        save(); renderCardPayments(); recompute();
+      }
+      due.addEventListener("input", function () { l.dueDay = due.value; commitDue(); });
+      due.addEventListener("blur", function () {
+        if (due.value === "") { l.dueDay = ""; l.lastApplied = ""; commitDue(); return; }
+        var n = parseInt(due.value, 10);
+        if (isNaN(n)) { due.value = ""; l.dueDay = ""; l.lastApplied = ""; }
+        else {
+          var c2 = Math.max(1, Math.min(28, n));
+          if (String(c2) !== due.value) { due.value = String(c2); l.dueDay = due.value; }
+        }
+        commitDue();
+      });
+      var eomBtn = el("button", "eom-toggle" + (isEom ? " active" : ""), { type: "button", title: "Due at end of month" });
+      eomBtn.textContent = "EOM";
+      eomBtn.addEventListener("click", function () {
+        l.dueDay = isEom ? "" : "EOM";
+        l.lastApplied = l.dueDay ? dateToISO(mostRecentOccurrence(l.dueDay, stripTime(new Date()))) : "";
+        save(); renderLoans(); renderCardPayments(); recompute();
+      });
+      dueWrap.appendChild(due); dueWrap.appendChild(eomBtn);
+
+      var del = el("button", "del ln-del", { type: "button", "aria-label": "Remove" });
+      del.innerHTML = "&times;";
+      del.addEventListener("click", function () {
+        state.loans.splice(i, 1); renderLoans(); onWorthChange(); renderCardPayments(); recompute();
+      });
+
+      row.appendChild(name); row.appendChild(balWrap); row.appendChild(payWrap); row.appendChild(dueWrap); row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
   // Runway: one row per card that has a due day. Amount is yours to fill in each cycle.
   var cardPayRows = [];
   function renderCardPayments() {
@@ -1329,40 +1466,51 @@
     cardPayRows = [];
     var today = new Date();
     var payday = nextPayday(today);
-    var due = state.cards.filter(function (c) { return !!c.dueDay; });
+    var due = [];
+    state.cards.forEach(function (c) { if (c.dueDay) due.push({ c: c, loan: false, when: cardDueDate(c, today) }); });
+    state.loans.forEach(function (l) { if (l.dueDay) due.push({ c: l, loan: true, when: cardDueDate(l, today) }); });
 
     document.getElementById("cardPayNote").hidden = due.length > 0;
 
-    due.map(function (c) { return { c: c, when: cardDueDate(c, today) }; })
-       .sort(function (a, b) { return a.when - b.when; })
+    due.sort(function (a, b) { return a.when - b.when; })
        .forEach(function (item) {
-      var c = item.c, when = item.when;
+      var c = item.c, when = item.when, isLoan = item.loan;
       var beforePay = when <= payday;
       var daysAway = Math.round((stripTime(when) - stripTime(today)) / 86400000);
 
       var row = el("div", "cardpay-row");
       var nameWrap = el("div", "cp-name");
-      nameWrap.textContent = c.name || "Card";
+      nameWrap.textContent = c.name || (isLoan ? "Loan" : "Card");
       var dueLbl = el("span", "cp-due" + (beforePay && daysAway <= 3 ? " soon" : beforePay ? "" : " next"));
       dueLbl.textContent = "due " + MON[when.getMonth()] + " " + when.getDate() +
         (beforePay ? (daysAway <= 0 ? " · today" : " · in " + daysAway + "d") : " · next period");
       nameWrap.appendChild(dueLbl);
+      row.appendChild(nameWrap);
 
-      var amtWrap = el("div", "amt");
-      var cur = el("span", "cur"); cur.textContent = "$";
-      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
-      amt.value = c.payAmount || "";
-      amt.addEventListener("input", function () {
-        c.payAmount = amt.value;
-        // tie this amount to the due date it was entered for, so it clears once that passes
-        c.payFor = amt.value === "" ? "" : dateToISO(when);
-        recompute();
-      });
-      amtWrap.appendChild(cur); amtWrap.appendChild(amt);
+      if (isLoan) {
+        // fixed payment — nothing to type, so just show it
+        var fixed = el("div", "cp-fixed tnum");
+        fixed.textContent = num(c.payment) > 0 ? money(num(c.payment)) : "—";
+        fixed.title = "Fixed payment, set on the Net worth tab";
+        row.appendChild(fixed);
+      } else {
+        var amtWrap = el("div", "amt");
+        var cur = el("span", "cur"); cur.textContent = "$";
+        var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+        amt.value = c.payAmount || "";
+        amt.addEventListener("input", function () {
+          c.payAmount = amt.value;
+          // tie this amount to the due date it was entered for, so it clears once that passes
+          c.payFor = amt.value === "" ? "" : dateToISO(when);
+          recompute();
+        });
+        amtWrap.appendChild(cur); amtWrap.appendChild(amt);
+        row.appendChild(amtWrap);
+      }
 
       var afterEl = el("div", "cp-after");
-      row.appendChild(nameWrap); row.appendChild(amtWrap); row.appendChild(afterEl);
-      cardPayRows.push({ c: c, afterEl: afterEl });
+      row.appendChild(afterEl);
+      cardPayRows.push({ c: c, afterEl: afterEl, loan: isLoan });
       box.appendChild(row);
     });
 
@@ -1373,7 +1521,7 @@
   function updateCardPayTotals() {
     var total = 0;
     cardPayRows.forEach(function (r) {
-      var c = r.c, amt = num(c.payAmount);
+      var c = r.c, amt = r.loan ? num(c.payment) : num(c.payAmount);
       total += amt;
       if (amt > 0 && String(c.balance).trim() !== "") {
         var after = num(c.balance) - amt;
@@ -1604,6 +1752,7 @@
   function recompute() {
     if (clearOldOneoffs()) renderOneoffs(); // expire one-offs if a payday passed while the app stayed open
     if (clearOldCardPayments()) renderCardPayments(); // same for card payments whose due date has passed
+    if (applyDueLoanPayments()) { renderLoans(); renderCardPayments(); } // loan payments actually reduce the balance
     save();
     var today = new Date();
     var payday = nextPayday(today);
@@ -1634,6 +1783,13 @@
       var when = cardDueDate(c, today);
       if (!when) return;
       upcoming.push({ name: (c.name || "Card") + " payment", amount: amt, when: when, beforePay: when <= payday, cardPay: true });
+    });
+    state.loans.forEach(function (l) {
+      var amt = num(l.payment);
+      if (amt <= 0 || !l.dueDay) return;
+      var when = cardDueDate(l, today);
+      if (!when) return;
+      upcoming.push({ name: (l.name || "Loan") + " payment", amount: amt, when: when, beforePay: when <= payday, cardPay: true });
     });
     upcoming.sort(function (a, b) { return a.when - b.when; });
 
@@ -2185,7 +2341,7 @@
     renderOneoffs();
     renderCards();
     renderCardPayments();
-    renderAccounts("loans", state.loans, "Loan name", onWorthChange);
+    renderLoans();
     renderAssets();
     document.getElementById("nameA").value = S().nameA;
     document.getElementById("nameB").value = S().nameB;
@@ -2227,7 +2383,8 @@
       renderCards(); renderCardPayments(); recompute();
     });
     document.getElementById("addLoan").addEventListener("click", function () {
-      state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();
+      state.loans.push({ name: "", balance: "", id: uid(), payment: "", dueDay: "", lastApplied: "" });
+      renderLoans(); renderCardPayments(); recompute();
     });
     document.getElementById("addAsset").addEventListener("click", function () {
       state.assets.push({ name: "", balance: "", type: "savings" }); renderAssets(); recomputeNetWorth();

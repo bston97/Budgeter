@@ -7,6 +7,14 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.14.0] — 2026-07-25
+
+### Added
+- **Loan payments.** Each loan takes a fixed monthly **payment** and a **due day** on the Net worth tab. The payment shows up on Runway alongside card payments, counts against your available cash, and lands on the timeline — and once the due date passes, **the payment actually comes off the loan balance**, so the number stays real without you touching it. Missed opens are caught up (three months away applies three payments), the balance never drops below zero, and adding a due day never charges you retroactively.
+
+### Changed
+- The Runway "Card payments" section is now **"Debt payments"**, covering both cards and loans. Card amounts stay editable (they vary); loan payments show as fixed values since they don't.
+
 ## [1.13.0] — 2026-07-25
 
 ### Added
