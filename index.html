@@ -4,6 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="light dark" />
+<meta name="theme-color" content="#2f7d5b" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#121815" media="(prefers-color-scheme: dark)" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Runway" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 <title>Runway — Budget &amp; Net Worth</title>
 <style>
   :root {
@@ -424,6 +432,38 @@
   .settle-names { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-strong); flex-wrap: wrap; }
   .settle-names input { width: auto; max-width: 130px; font-size: 13px; padding: 7px 10px; }
   .settle-names .amp { color: var(--ink-faint); font-weight: 600; }
+  .track-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .track-btn.primary:hover { filter: brightness(1.06); background: var(--accent); color: #fff; }
+
+  /* paycheck */
+  .pay-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; }
+  .pay-field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 5px; }
+  .pay-field input, .pay-field select {
+    width: 100%; font-family: inherit; font-size: 14px; color: var(--ink);
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; outline: none;
+  }
+  .pay-field .money-input input { padding-left: 22px; }
+  .pay-field input:focus, .pay-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .pay-field[hidden] { display: none; }
+  .card-head .head-total.pay { color: var(--accent); }
+
+  /* net-worth sparkline */
+  .nw-trend { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line-strong); }
+  .nw-trend-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .nw-trend-head .k { font-size: 12px; color: var(--ink-faint); letter-spacing: .04em; }
+  .nw-change { font-size: 13px; font-weight: 700; }
+  .nw-change.up { color: var(--accent); }
+  .nw-change.down { color: var(--crit); }
+  .spark { width: 100%; height: 48px; display: block; overflow: visible; }
+  .nw-trend-foot { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-faint); margin-top: 4px; }
+
+  /* settle history */
+  .hist-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .hist-row:first-child { border-top: none; }
+  .hist-date { font-size: 12px; color: var(--ink-faint); }
+  .hist-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hist-amt.up { color: var(--accent); }
+  .hist-amt.down { color: var(--crit); }
 
   footer.note {
     margin-top: 26px; text-align: center; color: var(--ink-faint); font-size: 12px;
@@ -516,6 +556,48 @@
           </section>
 
           <section class="card">
+            <div class="card-head">
+              <h2>Paycheck</h2>
+              <span class="head-total tnum" id="payHead"></span>
+            </div>
+            <div class="card-body">
+              <p class="note-line" id="periodNote">Paid the 15th and last day of the month — your check tracks the weekdays in each period.</p>
+              <div class="pay-grid">
+                <div class="pay-field">
+                  <label for="payRate">Rate</label>
+                  <div class="money-input">
+                    <span class="cur">$</span>
+                    <input type="text" inputmode="decimal" id="payRate" placeholder="0.00" />
+                  </div>
+                </div>
+                <div class="pay-field">
+                  <label for="payPer">Per</label>
+                  <select id="payPer">
+                    <option value="hour">hour</option>
+                    <option value="day">weekday</option>
+                  </select>
+                </div>
+                <div class="pay-field" id="hoursField">
+                  <label for="payHours">Hours / day</label>
+                  <input type="text" inputmode="decimal" id="payHours" placeholder="8" />
+                </div>
+                <div class="pay-field">
+                  <label for="payTakeHome">Take-home %</label>
+                  <input type="text" inputmode="decimal" id="payTakeHome" placeholder="100" />
+                </div>
+                <div class="pay-field">
+                  <label for="payDaysOff">Days off</label>
+                  <input type="text" inputmode="decimal" id="payDaysOff" placeholder="0" />
+                </div>
+              </div>
+              <div class="subtotal">
+                <span id="weekdayLabel">Weekdays this period</span>
+                <span class="v tnum" id="weekdayCount">—</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
             <div class="card-head"><h2>Bills &amp; expenses</h2></div>
             <div class="card-body">
               <div class="col-head bills">
@@ -568,6 +650,14 @@
                   <div class="k">Days to payday</div>
                   <div class="v tnum" id="daysLeft">0</div>
                 </div>
+                <div class="metric" id="checkMetric" hidden>
+                  <div class="k">Est. next check</div>
+                  <div class="v tnum" id="estCheck">$0.00</div>
+                </div>
+                <div class="metric" id="afterPayMetric" hidden>
+                  <div class="k">Balance after payday</div>
+                  <div class="v tnum" id="afterPay">$0.00</div>
+                </div>
               </div>
             </div>
           </section>
@@ -600,6 +690,14 @@
               <div class="item"><span class="dot asset"></span>Assets <span class="v tnum" id="assetsTotalHero">$0.00</span></div>
               <div class="item"><span class="dot debt"></span>Debts <span class="v tnum" id="debtsTotalHero">$0.00</span></div>
             </div>
+          </div>
+          <div class="nw-trend" id="nwTrend" hidden>
+            <div class="nw-trend-head">
+              <span class="k">Net worth over time</span>
+              <span class="nw-change tnum" id="nwChange"></span>
+            </div>
+            <svg class="spark" id="nwSpark" viewBox="0 0 300 48" preserveAspectRatio="none" aria-hidden="true"></svg>
+            <div class="nw-trend-foot"><span id="nwSparkFrom"></span><span id="nwSparkTo"></span></div>
           </div>
         </div>
       </section>
@@ -706,6 +804,10 @@
                 <button class="track-btn" id="venmoToday" type="button">Settled today</button>
               </div>
             </div>
+            <div class="track-item">
+              <div class="k">Start fresh</div>
+              <button class="track-btn primary" id="settleUpBtn" type="button">Settle up &amp; clear</button>
+            </div>
           </div>
           <div class="settle-names">
             <input type="text" id="nameA" placeholder="Your name" />
@@ -752,6 +854,16 @@
           </section>
         </div>
       </div>
+
+      <section class="card" id="settleHistoryCard" hidden>
+        <div class="card-head">
+          <h2>Past settle-ups</h2>
+          <button class="link-btn" id="clearHistory" type="button">Clear history</button>
+        </div>
+        <div class="card-body">
+          <div id="settleHistory"></div>
+        </div>
+      </section>
     </div>
 
     <footer class="note">
@@ -787,6 +899,8 @@
       creditScore: "",
       creditDate: "",
       oneoffs: [],
+      pay: { rate: "", per: "hour", hours: "8", takeHome: "100", daysOff: "" },
+      nwHistory: [],
       cards: [{ name: "Visa", balance: "" }],
       bills: [
         { name: "Rent", amount: "1200", due: "1" },
@@ -820,6 +934,12 @@
     if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
     if (typeof s.creditDate !== "string") s.creditDate = s.creditDate != null ? String(s.creditDate) : "";
     if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
+    if (!s.pay || typeof s.pay !== "object") s.pay = {};
+    ["rate", "per", "hours", "takeHome", "daysOff"].forEach(function (k) {
+      if (typeof s.pay[k] !== "string") s.pay[k] = s.pay[k] != null ? String(s.pay[k]) : "";
+    });
+    if (s.pay.per !== "hour" && s.pay.per !== "day") s.pay.per = "hour";
+    if (!Array.isArray(s.nwHistory)) s.nwHistory = [];
     return s;
   }
   function readLocal() {
@@ -924,6 +1044,37 @@
   }
   function dateToISO(d) {
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  // Semi-monthly pay period ending on the given payday: the 15th covers the 1st–15th, EOM covers the 16th–end.
+  function payPeriodStart(payday) {
+    return payday.getDate() === 15
+      ? new Date(payday.getFullYear(), payday.getMonth(), 1)
+      : new Date(payday.getFullYear(), payday.getMonth(), 16);
+  }
+  function countWeekdays(start, end) {
+    var n = 0, d = stripTime(start), last = stripTime(end);
+    while (d <= last) {
+      var w = d.getDay();
+      if (w !== 0 && w !== 6) n++;
+      d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    }
+    return n;
+  }
+  // Projected take-home for the period ending on `payday`, based on weekdays actually worked.
+  function projectedCheck(payday) {
+    var p = state.pay;
+    var rate = num(p.rate);
+    if (rate <= 0) return null;
+    var weekdays = countWeekdays(payPeriodStart(payday), payday);
+    var worked = Math.max(0, weekdays - num(p.daysOff));
+    var perDayPay = p.per === "day" ? rate : rate * (num(p.hours) || 0);
+    var takeHome = p.takeHome === "" ? 100 : num(p.takeHome);
+    return {
+      weekdays: weekdays,
+      worked: worked,
+      gross: worked * perDayPay,
+      net: worked * perDayPay * (takeHome / 100)
+    };
   }
   function fmtShort(iso) {
     var p = String(iso).split("-");
@@ -1266,9 +1417,33 @@
     document.getElementById("availLabel").textContent =
       available < 0 ? "short before your next paycheck" : "left after bills due before payday";
 
+    renderPaycheck(payday, available);
     renderTimeline(upcoming, payday, checking);
     recomputeNetWorth();
     updateOneoffAfters();
+  }
+
+  function renderPaycheck(payday, available) {
+    var check = projectedCheck(payday);
+    var start = payPeriodStart(payday);
+    var weekdays = countWeekdays(start, payday);
+    setText("weekdayCount", String(weekdays));
+    setText("weekdayLabel", "Weekdays " + fmtShort(dateToISO(start)) + " – " + fmtShort(dateToISO(payday)));
+
+    var head = document.getElementById("payHead");
+    var cm = document.getElementById("checkMetric");
+    var am = document.getElementById("afterPayMetric");
+    if (!check) {
+      head.textContent = ""; head.className = "head-total tnum";
+      cm.hidden = true; am.hidden = true;
+      return;
+    }
+    head.textContent = money(check.net); head.className = "head-total pay tnum";
+    cm.hidden = false; am.hidden = false;
+    setText("estCheck", money(check.net));
+    setText("afterPay", money(available + check.net));
+    var days = check.worked === weekdays ? String(weekdays) : check.worked + " of " + weekdays;
+    setText("weekdayCount", days);
   }
 
   function renderTimeline(upcoming, payday, checking) {
@@ -1337,6 +1512,61 @@
     var aPct = denom > 0 ? (assets / denom) * 100 : 50;
     document.getElementById("segAsset").style.width = aPct + "%";
     document.getElementById("segDebt").style.width = (100 - aPct) + "%";
+
+    recordNetWorth(net, assets + debts);
+    renderNetWorthTrend();
+  }
+
+  // Keep one net-worth point per day; the day's latest value wins.
+  function recordNetWorth(net, gross) {
+    if (suppressSave) return;              // loading from cloud, not a real change
+    if (gross === 0 && !state.nwHistory.length) return; // nothing entered yet
+    var today = todayISO();
+    var h = state.nwHistory;
+    var last = h[h.length - 1];
+    if (last && last.d === today) {
+      if (Math.abs(last.n - net) > 0.005) { last.n = net; save(); }
+      return;
+    }
+    if (last && Math.abs(last.n - net) < 0.005) return; // unchanged since the last recorded day
+    h.push({ d: today, n: net });
+    if (h.length > 365) h.splice(0, h.length - 365);
+    save();
+  }
+
+  function renderNetWorthTrend() {
+    var h = state.nwHistory, box = document.getElementById("nwTrend");
+    if (!box) return;
+    if (h.length < 2) { box.hidden = true; return; }
+    box.hidden = false;
+
+    var vals = h.map(function (p) { return p.n; });
+    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    var span = (max - min) || 1;
+    var W = 300, H = 48, pad = 4;
+    var pts = h.map(function (p, i) {
+      var x = h.length === 1 ? W : (i / (h.length - 1)) * W;
+      var y = pad + (1 - (p.n - min) / span) * (H - pad * 2);
+      return [x, y];
+    });
+    var line = pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ");
+    var area = "0," + H + " " + line + " " + W + "," + H;
+    var change = vals[vals.length - 1] - vals[0];
+    var up = change >= 0;
+    var stroke = up ? "var(--accent)" : "var(--crit)";
+    var end = pts[pts.length - 1];
+
+    document.getElementById("nwSpark").innerHTML =
+      '<polygon points="' + area + '" fill="' + stroke + '" opacity="0.12"></polygon>' +
+      '<polyline points="' + line + '" fill="none" stroke="' + stroke + '" stroke-width="2" ' +
+      'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>' +
+      '<circle cx="' + end[0].toFixed(1) + '" cy="' + end[1].toFixed(1) + '" r="3" fill="' + stroke + '"></circle>';
+
+    var ch = document.getElementById("nwChange");
+    ch.textContent = (up ? "▲ " : "▼ ") + money(Math.abs(change));
+    ch.className = "nw-change " + (up ? "up" : "down");
+    setText("nwSparkFrom", fmtShort(h[0].d));
+    setText("nwSparkTo", fmtShort(h[h.length - 1].d));
   }
 
   // ---------- Credit score ----------
@@ -1393,6 +1623,7 @@
     if (typeof x.lastVenmo !== "string") x.lastVenmo = "";
     if (typeof x.nameA !== "string" || !x.nameA) x.nameA = "You";
     if (typeof x.nameB !== "string" || !x.nameB) x.nameB = "Maria";
+    if (!Array.isArray(x.history)) x.history = [];
     return x;
   }
   function S() { return sharedMode ? sharedData : state.settle; } // active settle source
@@ -1442,7 +1673,8 @@
             if (priv.nameB) sharedData.nameB = priv.nameB;
             scheduleSharedSave();
           }
-        } else { sharedMode = false; sharedData = null; }
+          subscribeShared();
+        } else { sharedMode = false; sharedData = null; unsubscribeShared(); }
         applySettleMode();
       })
       .catch(function () { sharedMode = false; sharedData = null; applySettleMode(); });
@@ -1452,6 +1684,7 @@
     document.getElementById("nameB").value = S().nameB;
     renderLedger("sheOwes", S().sheOwes);
     renderLedger("iOwe", S().iOwe);
+    renderSettleHistory();
     recomputeSettle();
   }
   function setText(id, t) { var e = document.getElementById(id); if (e) e.textContent = t; }
@@ -1473,6 +1706,71 @@
     S().lastUpdated = todayISO();
     saveSettle();
     recomputeSettle();
+  }
+
+  // Record who owed whom, then wipe both ledgers so the next period starts clean.
+  function archiveSettle() {
+    var s = S();
+    var a = sumPrices(s.sheOwes), b = sumPrices(s.iOwe);
+    var net = a - b;
+    if (!s.sheOwes.length && !s.iOwe.length) { alert("Nothing to settle yet."); return; }
+    var A = s.nameA || "You", B = s.nameB || "Maria";
+    var summary = Math.abs(net) < 0.005
+      ? "You're already square"
+      : (net > 0 ? B + " pays " + A : A + " pays " + B) + " " + money(Math.abs(net));
+    if (!confirm(summary + ".\n\nClear both lists and save this to Past settle-ups?")) return;
+    s.history.unshift({ date: todayISO(), from: net > 0 ? B : A, to: net > 0 ? A : B, amount: Math.abs(net) });
+    if (s.history.length > 60) s.history.length = 60;
+    s.sheOwes = [];
+    s.iOwe = [];
+    s.lastVenmo = todayISO();
+    s.lastUpdated = todayISO();
+    saveSettle();
+    applySettleMode();
+  }
+
+  function renderSettleHistory() {
+    var h = S().history || [], box = document.getElementById("settleHistory");
+    var card = document.getElementById("settleHistoryCard");
+    if (!box || !card) return;
+    card.hidden = h.length === 0;
+    box.innerHTML = "";
+    h.forEach(function (e) {
+      var row = el("div", "hist-row");
+      var d = el("div", "hist-date"); d.textContent = fmtISO(e.date);
+      var who = el("div");
+      who.textContent = e.amount < 0.005 ? "Settled — all square" : e.from + " paid " + e.to;
+      var amt = el("div", "hist-amt"); amt.textContent = money(e.amount);
+      row.appendChild(d); row.appendChild(who); row.appendChild(amt);
+      box.appendChild(row);
+    });
+  }
+
+  // Live updates: push the other person's shared edits straight onto this screen.
+  var sharedChannel = null;
+  function subscribeShared() {
+    if (!sb || !sharedMode || sharedChannel || !sb.channel) return;
+    try {
+      sharedChannel = sb.channel("shared_settle_live")
+        .on("postgres_changes",
+            { event: "*", schema: "public", table: "shared_settle", filter: "id=eq." + SHARED_ID },
+            function (payload) {
+              if (sharedPending) return; // our own edit is mid-flight; don't fight it
+              var d = payload && payload.new && payload.new.data;
+              if (!d) return;
+              if (JSON.stringify(d) === JSON.stringify(sharedData)) return; // echo of our own write
+              if (document.activeElement && document.activeElement.closest &&
+                  document.activeElement.closest("#panel-settle")) return; // don't yank a field being typed in
+              sharedData = normSettle(d);
+              applySettleMode();
+              setSync("saved");
+            })
+        .subscribe();
+    } catch (e) { sharedChannel = null; }
+  }
+  function unsubscribeShared() {
+    if (sb && sharedChannel && sb.removeChannel) { try { sb.removeChannel(sharedChannel); } catch (e) {} }
+    sharedChannel = null;
   }
 
   function renderLedger(boxId, arr) {
@@ -1549,6 +1847,12 @@
     document.getElementById("checking").value = state.checking || "";
     document.getElementById("creditInput").value = state.creditScore || "";
     document.getElementById("creditDate").value = state.creditDate || "";
+    document.getElementById("payRate").value = state.pay.rate || "";
+    document.getElementById("payPer").value = state.pay.per || "hour";
+    document.getElementById("payHours").value = state.pay.hours || "";
+    document.getElementById("payTakeHome").value = state.pay.takeHome || "";
+    document.getElementById("payDaysOff").value = state.pay.daysOff || "";
+    document.getElementById("hoursField").hidden = state.pay.per === "day";
     renderBills();
     renderOneoffs();
     renderAccounts("cards", state.cards, "Card name", onWorthChange);
@@ -1558,6 +1862,7 @@
     document.getElementById("nameB").value = S().nameB;
     renderLedger("sheOwes", S().sheOwes);
     renderLedger("iOwe", S().iOwe);
+    renderSettleHistory();
     recompute();
     recomputeSettle();
     recomputeCredit();
@@ -1610,6 +1915,24 @@
     });
     document.getElementById("venmoToday").addEventListener("click", function () {
       S().lastVenmo = todayISO(); saveSettle(); recomputeSettle();
+    });
+    document.getElementById("settleUpBtn").addEventListener("click", archiveSettle);
+    document.getElementById("clearHistory").addEventListener("click", function () {
+      if (!S().history.length) return;
+      if (confirm("Delete the record of past settle-ups? The current lists are not affected.")) {
+        S().history = []; saveSettle(); renderSettleHistory();
+      }
+    });
+    ["payRate", "payHours", "payTakeHome", "payDaysOff"].forEach(function (id) {
+      document.getElementById(id).addEventListener("input", function () {
+        state.pay[{ payRate: "rate", payHours: "hours", payTakeHome: "takeHome", payDaysOff: "daysOff" }[id]] = this.value;
+        recompute();
+      });
+    });
+    document.getElementById("payPer").addEventListener("change", function () {
+      state.pay.per = this.value;
+      document.getElementById("hoursField").hidden = this.value === "day";
+      recompute();
     });
     document.getElementById("nameA").addEventListener("input", function () {
       S().nameA = this.value; saveSettle(); recomputeSettle();
@@ -1707,6 +2030,7 @@
         suppressSave = true;
         try { localStorage.removeItem(KEY); } catch (e) {}
         state = migrate(defaults());
+        unsubscribeShared();
         sharedMode = false; sharedData = null;
         suppressSave = false;
         showAuth();

@@ -7,6 +7,15 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.8.0] — 2026-07-24
+
+### Added
+- **Paycheck projection built on weekdays, not calendar days.** Since pay lands on the 15th and the last day of the month, each period has a different number of weekdays (10–12), so the check varies. Enter a rate (per hour or per weekday), hours/day, take-home %, and any days off, and the app counts the weekdays in the current period and projects the check. Two new figures on the Runway summary: **Est. next check** and **Balance after payday**.
+- **Live shared ledger updates.** When the Settle-up ledger is shared, the other person's edits now appear on your screen within seconds — no refresh — via a realtime subscription. It never overwrites a field you're actively typing in, and falls back to the existing refresh-on-return behavior if realtime isn't enabled.
+- **"Settle up & clear."** One button records who paid whom, files it under **Past settle-ups**, wipes both lists for the next period, and stamps Last Venmo'd. History is capped at the 60 most recent and can be cleared separately.
+- **Net worth over time.** The app records one net-worth point per day and draws a sparkline on the Net worth tab with the total change since the first point (green up / red down).
+- **Installable as an app (PWA).** "Add to Home Screen" on your phone gives Runway its own icon and a full-screen, browser-chrome-free window. Adds a web manifest, icons, and theme colors.
+
 ## [1.7.0] — 2026-07-24
 
 ### Added
