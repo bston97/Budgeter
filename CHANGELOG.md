@@ -7,6 +7,14 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.10.0] — 2026-07-25
+
+### Added
+- **Credit card payment due dates.** Each card gets a due day (1–28 or EOM) on the Net worth tab, and a new **Card payments** section on Runway lists them by date. Enter the amount once you know it — cards vary month to month — and it counts against your available cash, lands on the timeline, and shows the card's **balance after** the payment. Amounts clear themselves the day after the due date passes, so each cycle starts blank. A card due *after* your next payday is shown but doesn't reduce this period's cash.
+
+### Changed
+- Card payments were previously logged as one-off payments linked to a card. That dropdown is retired — **card payments now have one home**, and the "Extra payments" section is purely for ad-hoc items (ATM withdrawals, one-time expenses), with shorter wording to match.
+
 ## [1.9.0] — 2026-07-25
 
 ### Added

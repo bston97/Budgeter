@@ -326,19 +326,25 @@
   }
   .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-  /* one-off payment → credit card link */
-  .oneoff-item { padding: 2px 0; }
-  .oneoff-item + .oneoff-item { border-top: 1px solid var(--line); }
-  .oneoff-item .line-row { border-top: none; }
-  .oneoff-link { display: flex; align-items: center; gap: 8px; padding: 2px 0 8px; font-size: 12px; color: var(--ink-faint); flex-wrap: wrap; }
-  .oneoff-link-lbl { white-space: nowrap; }
-  .oneoff-card {
-    font-family: inherit; font-size: 12px; color: var(--ink); background: var(--surface-2);
-    border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; max-width: 170px; outline: none;
+  /* credit card rows carry a due day */
+  .col-head.cards-head { grid-template-columns: 1fr 78px 96px 34px; }
+  .line-row.card-row { grid-template-columns: 1fr 78px 96px 34px; }
+
+  /* card payments due this period */
+  .cardpay-row {
+    display: grid; grid-template-columns: 1fr 96px; gap: 8px 10px; align-items: center;
+    padding: 10px 0; border-top: 1px solid var(--line);
   }
-  .oneoff-card:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .oneoff-after { font-weight: 600; color: var(--ink-soft); }
-  .oneoff-after.neg { color: var(--crit); }
+  .cardpay-row:first-child { border-top: none; }
+  .cp-name { font-weight: 600; font-size: 14px; }
+  .cp-due { display: block; font-size: 12px; color: var(--ink-faint); font-weight: 500; }
+  .cp-due.soon { color: var(--warn); font-weight: 700; }
+  .cp-due.next { color: var(--ink-faint); }
+  .cardpay-row .amt input { padding-left: 20px; font-variant-numeric: tabular-nums; }
+  .cp-after { grid-column: 1 / -1; font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-top: -2px; }
+  .cp-after.neg { color: var(--crit); }
+
+  /* one-off payment → credit card link */
 
   .subtotal {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -640,10 +646,21 @@
             </div>
           </section>
 
+          <section class="card" id="cardPayCard">
+            <div class="card-head">
+              <h2>Card payments</h2>
+              <span class="head-total debt tnum" id="cardPayTotal"></span>
+            </div>
+            <div class="card-body">
+              <p class="note-line" id="cardPayNote">Give each credit card a due day on the Net worth tab and it appears here. Enter the amount once you know it — it clears itself after the due date passes.</p>
+              <div id="cardPayments"></div>
+            </div>
+          </section>
+
           <section class="card">
             <div class="card-head"><h2>Extra payments this period</h2></div>
             <div class="card-body">
-              <p class="note-line">One-off amounts to hold against your cash — like a credit-card payment you haven't made yet (so your checking balance doesn't already reflect it). These clear automatically once your next payday passes.</p>
+              <p class="note-line">Anything else leaving checking this period that your balance doesn't already reflect — an ATM withdrawal, a one-time expense. Clears after payday.</p>
               <div class="col-head accts"><span>What for</span><span class="r">Amount</span><span></span></div>
               <div id="oneoffs"></div>
               <button class="add-btn" id="addOneoff" type="button">+ Add a one-off payment</button>
@@ -773,7 +790,7 @@
               <span class="head-total debt tnum" id="cardsHead">$0.00</span>
             </div>
             <div class="card-body">
-              <div class="col-head accts"><span>Card</span><span class="r">Balance owed</span><span></span></div>
+              <div class="col-head cards-head"><span>Card</span><span class="r">Balance owed</span><span class="r">Due day</span><span></span></div>
               <div id="cards"></div>
               <button class="add-btn" id="addCard" type="button">+ Add credit card</button>
               <div class="subtotal">
@@ -951,7 +968,14 @@
     if (!s || typeof s !== "object") s = {};
     if (typeof s.checking !== "string") s.checking = s.checking != null ? String(s.checking) : "";
     if (!Array.isArray(s.cards)) s.cards = [{ name: "Visa", balance: "" }];
-    s.cards.forEach(function (c) { if (!c.id) c.id = uid(); });
+    s.cards.forEach(function (c) {
+      if (!c.id) c.id = uid();
+      ["dueDay", "payAmount", "payFor"].forEach(function (k) {
+        if (typeof c[k] !== "string") c[k] = c[k] != null ? String(c[k]) : "";
+      });
+      var dn = parseInt(c.dueDay, 10);
+      if (!isNaN(dn) && dn > 28) c.dueDay = "EOM";
+    });
     if (!Array.isArray(s.bills)) s.bills = [];
     // days 29–31 don't exist in every month; they always meant "end of month"
     s.bills.forEach(function (b) {
@@ -1073,6 +1097,20 @@
     if (isNaN(dueDay) || dueDay < 1) return null;
     return billDate(dueDay, today); // billDate clamps to the month's last day
   }
+  // next occurrence of a credit card's payment due date (same 1–28 / EOM rules as bills)
+  function cardDueDate(card, today) {
+    if (!card.dueDay) return null;
+    return billOccurrence({ due: card.dueDay }, today);
+  }
+  // once a card's due date has passed, drop the amount so next cycle starts blank
+  function clearOldCardPayments() {
+    var t = stripTime(new Date()), changed = false;
+    state.cards.forEach(function (c) {
+      if (!c.payFor) return;
+      if (t > stripTime(isoToDate(c.payFor))) { c.payAmount = ""; c.payFor = ""; changed = true; }
+    });
+    return changed;
+  }
   function isoToDate(iso) {
     var p = String(iso).split("-");
     return new Date(+p[0], (+p[1] - 1), +p[2]);
@@ -1163,7 +1201,7 @@
       var row = el("div", "line-row");
       var name = el("input", null, { type: "text", placeholder: namePh });
       name.value = c.name;
-      name.addEventListener("input", function () { c.name = name.value; save(); if (boxId === "cards") renderOneoffs(); });
+      name.addEventListener("input", function () { c.name = name.value; save(); });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
@@ -1174,11 +1212,132 @@
 
       var del = el("button", "del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
-      del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange); onchange(); if (boxId === "cards") renderOneoffs(); });
+      del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange); onchange(); });
 
       row.appendChild(name); row.appendChild(amtWrap); row.appendChild(del);
       box.appendChild(row);
     });
+  }
+
+  // Credit cards: name, balance, and a payment due day that drives the Runway card-payments section.
+  function renderCards() {
+    var box = document.getElementById("cards");
+    box.innerHTML = "";
+    state.cards.forEach(function (c, i) {
+      var row = el("div", "line-row card-row");
+
+      var name = el("input", null, { type: "text", placeholder: "Card name" });
+      name.value = c.name;
+      name.addEventListener("input", function () { c.name = name.value; save(); renderCardPayments(); });
+
+      var amtWrap = el("div", "amt");
+      var cur = el("span", "cur"); cur.textContent = "$";
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      amt.value = c.balance;
+      amt.addEventListener("input", function () { c.balance = amt.value; onWorthChange(); });
+      amtWrap.appendChild(cur); amtWrap.appendChild(amt);
+
+      var isEom = String(c.dueDay).toUpperCase() === "EOM";
+      var dueWrap = el("div", "due-cell");
+      var due = el("input", null, { type: "number", min: "1", max: "28", placeholder: "—", title: "Payment due day (1–28), or EOM" });
+      due.value = isEom ? "" : (c.dueDay || "");
+      due.disabled = isEom;
+      due.addEventListener("input", function () { c.dueDay = due.value; save(); renderCardPayments(); recompute(); });
+      due.addEventListener("blur", function () {
+        if (due.value === "") return;
+        var n = parseInt(due.value, 10);
+        if (isNaN(n)) { due.value = ""; c.dueDay = ""; }
+        else {
+          var c2 = Math.max(1, Math.min(28, n));
+          if (String(c2) !== due.value) { due.value = String(c2); c.dueDay = due.value; }
+        }
+        save(); renderCardPayments(); recompute();
+      });
+      var eomBtn = el("button", "eom-toggle" + (isEom ? " active" : ""), { type: "button", title: "Due at end of month" });
+      eomBtn.textContent = "EOM";
+      eomBtn.addEventListener("click", function () {
+        c.dueDay = isEom ? "" : "EOM";
+        save(); renderCards(); renderCardPayments(); recompute();
+      });
+      dueWrap.appendChild(due); dueWrap.appendChild(eomBtn);
+
+      var del = el("button", "del", { type: "button", "aria-label": "Remove" });
+      del.innerHTML = "&times;";
+      del.addEventListener("click", function () {
+        state.cards.splice(i, 1); renderCards(); onWorthChange(); renderOneoffs(); renderCardPayments(); recompute();
+      });
+
+      row.appendChild(name); row.appendChild(amtWrap); row.appendChild(dueWrap); row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
+  // Runway: one row per card that has a due day. Amount is yours to fill in each cycle.
+  var cardPayRows = [];
+  function renderCardPayments() {
+    var box = document.getElementById("cardPayments");
+    if (!box) return;
+    box.innerHTML = "";
+    cardPayRows = [];
+    var today = new Date();
+    var payday = nextPayday(today);
+    var due = state.cards.filter(function (c) { return !!c.dueDay; });
+
+    document.getElementById("cardPayNote").hidden = due.length > 0;
+
+    due.map(function (c) { return { c: c, when: cardDueDate(c, today) }; })
+       .sort(function (a, b) { return a.when - b.when; })
+       .forEach(function (item) {
+      var c = item.c, when = item.when;
+      var beforePay = when <= payday;
+      var daysAway = Math.round((stripTime(when) - stripTime(today)) / 86400000);
+
+      var row = el("div", "cardpay-row");
+      var nameWrap = el("div", "cp-name");
+      nameWrap.textContent = c.name || "Card";
+      var dueLbl = el("span", "cp-due" + (beforePay && daysAway <= 3 ? " soon" : beforePay ? "" : " next"));
+      dueLbl.textContent = "due " + MON[when.getMonth()] + " " + when.getDate() +
+        (beforePay ? (daysAway <= 0 ? " · today" : " · in " + daysAway + "d") : " · next period");
+      nameWrap.appendChild(dueLbl);
+
+      var amtWrap = el("div", "amt");
+      var cur = el("span", "cur"); cur.textContent = "$";
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      amt.value = c.payAmount || "";
+      amt.addEventListener("input", function () {
+        c.payAmount = amt.value;
+        // tie this amount to the due date it was entered for, so it clears once that passes
+        c.payFor = amt.value === "" ? "" : dateToISO(when);
+        recompute();
+      });
+      amtWrap.appendChild(cur); amtWrap.appendChild(amt);
+
+      var afterEl = el("div", "cp-after");
+      row.appendChild(nameWrap); row.appendChild(amtWrap); row.appendChild(afterEl);
+      cardPayRows.push({ c: c, afterEl: afterEl });
+      box.appendChild(row);
+    });
+
+    updateCardPayTotals();
+  }
+
+  // refresh totals/previews in place — re-rendering would steal focus while typing an amount
+  function updateCardPayTotals() {
+    var total = 0;
+    cardPayRows.forEach(function (r) {
+      var c = r.c, amt = num(c.payAmount);
+      total += amt;
+      if (amt > 0 && String(c.balance).trim() !== "") {
+        var after = num(c.balance) - amt;
+        r.afterEl.textContent = "→ balance after: " + money(after);
+        r.afterEl.className = "cp-after" + (after < 0 ? " neg" : "");
+      } else {
+        r.afterEl.textContent = "";
+        r.afterEl.className = "cp-after";
+      }
+    });
+    var head = document.getElementById("cardPayTotal");
+    if (head) head.textContent = total > 0 ? money(total) : "";
   }
 
   var ASSET_TYPES = [
@@ -1314,64 +1473,15 @@
     });
   }
 
-  var oneoffRows = [];
-  // "balance after" per card, applying each linked payment in order so multiple payments to one card accumulate
-  function updateOneoffAfters() {
-    var running = {};
-    oneoffRows.forEach(function (r) {
-      var o = r.o, span = r.afterSpan;
-      var card = cardById(o.cardId);
-      if (!card || String(card.balance).trim() === "") { span.textContent = ""; span.className = "oneoff-after"; return; }
-      if (!(o.cardId in running)) running[o.cardId] = num(card.balance);
-      running[o.cardId] -= num(o.amount);
-      var after = running[o.cardId];
-      span.textContent = "→ " + (card.name || "card") + " after: " + money(after);
-      span.className = "oneoff-after" + (after < 0 ? " neg" : "");
-    });
-  }
-  function cardById(id) {
-    if (!id) return null;
-    for (var i = 0; i < state.cards.length; i++) if (state.cards[i].id === id) return state.cards[i];
-    return null;
-  }
-  // best-guess a credit card from the payment description: whole-word match on the card name (longest wins)
-  function suggestCard(desc) {
-    var d = String(desc);
-    var best = "", bestLen = 0;
-    state.cards.forEach(function (c) {
-      var name = String(c.name).trim();
-      if (!name) return;
-      var re = new RegExp("\\b" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
-      if (re.test(d) && name.length > bestLen) { best = c.id; bestLen = name.length; }
-    });
-    return best;
-  }
-
+  // Card payments now live in their own section, so one-offs stay purely ad-hoc.
   function renderOneoffs() {
     var box = document.getElementById("oneoffs");
     box.innerHTML = "";
-    oneoffRows = [];
-    var namedCards = state.cards.filter(function (c) { return String(c.name).trim() !== ""; });
-    var linkCleaned = false;
-
     state.oneoffs.forEach(function (o, i) {
-      if (o.cardId && !cardById(o.cardId)) { o.cardId = ""; linkCleaned = true; } // drop links to deleted cards
-
-      var wrap = el("div", "oneoff-item");
-      var afterSpan = el("span", "oneoff-after");
-      var cardSelect = null;
-
       var row = el("div", "line-row");
-      var desc = el("input", null, { type: "text", placeholder: "What for (e.g. Apple Card payment)" });
+      var desc = el("input", null, { type: "text", placeholder: "What for (e.g. cash withdrawal)" });
       desc.value = o.desc || "";
-      desc.addEventListener("input", function () {
-        o.desc = desc.value;
-        if (!o.cardManual && namedCards.length) {
-          o.cardId = suggestCard(o.desc);
-          if (cardSelect) cardSelect.value = o.cardId || "";
-        }
-        recompute();
-      });
+      desc.addEventListener("input", function () { o.desc = desc.value; recompute(); });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
@@ -1385,31 +1495,8 @@
       del.addEventListener("click", function () { state.oneoffs.splice(i, 1); renderOneoffs(); recompute(); });
 
       row.appendChild(desc); row.appendChild(amtWrap); row.appendChild(del);
-      wrap.appendChild(row);
-
-      if (namedCards.length) {
-        var link = el("div", "oneoff-link");
-        var lbl = el("span", "oneoff-link-lbl"); lbl.textContent = "Apply to";
-        cardSelect = el("select", "oneoff-card", { "aria-label": "Apply payment to card" });
-        var none = el("option", null, { value: "" }); none.textContent = "— none —"; cardSelect.appendChild(none);
-        namedCards.forEach(function (c) {
-          var op = el("option", null, { value: c.id }); op.textContent = c.name;
-          cardSelect.appendChild(op);
-        });
-        cardSelect.value = o.cardId || "";
-        cardSelect.addEventListener("change", function () {
-          o.cardId = cardSelect.value; o.cardManual = true; save(); updateOneoffAfters();
-        });
-        link.appendChild(lbl); link.appendChild(cardSelect); link.appendChild(afterSpan);
-        wrap.appendChild(link);
-      }
-
-      oneoffRows.push({ o: o, afterSpan: afterSpan });
-      box.appendChild(wrap);
+      box.appendChild(row);
     });
-
-    updateOneoffAfters();
-    if (linkCleaned) save(); // persist any dropped stale links
   }
 
   // drop one-off payments once the pay period they were logged in has ended; returns true if any were removed
@@ -1428,6 +1515,7 @@
   // ---------- Runway computation ----------
   function recompute() {
     if (clearOldOneoffs()) renderOneoffs(); // expire one-offs if a payday passed while the app stayed open
+    if (clearOldCardPayments()) renderCardPayments(); // same for card payments whose due date has passed
     save();
     var today = new Date();
     var payday = nextPayday(today);
@@ -1449,6 +1537,13 @@
       if (!o.desc && !amt) return;
       var when = o.date ? isoToDate(o.date) : today;
       upcoming.push({ name: o.desc || "Payment", amount: amt, when: when, beforePay: true, oneOff: true });
+    });
+    state.cards.forEach(function (c) {
+      var amt = num(c.payAmount);
+      if (amt <= 0 || !c.dueDay) return;
+      var when = cardDueDate(c, today);
+      if (!when) return;
+      upcoming.push({ name: (c.name || "Card") + " payment", amount: amt, when: when, beforePay: when <= payday, cardPay: true });
     });
     upcoming.sort(function (a, b) { return a.when - b.when; });
 
@@ -1478,7 +1573,7 @@
     renderPaycheck(payday, available);
     renderTimeline(upcoming, payday, checking);
     recomputeNetWorth();
-    updateOneoffAfters();
+    updateCardPayTotals();
   }
 
   function renderPaycheck(payday, available) {
@@ -1937,7 +2032,7 @@
     document.getElementById("lastVenmo").value = S().lastVenmo || "";
   }
 
-  function onWorthChange() { save(); recomputeNetWorth(); updateOneoffAfters(); }
+  function onWorthChange() { save(); recomputeNetWorth(); renderCardPayments(); }
 
   // ---------- render everything from current state ----------
   function renderAll() {
@@ -1957,7 +2052,8 @@
     document.getElementById("payDaysOff").value = state.pay.daysOff || "";
     renderBills();
     renderOneoffs();
-    renderAccounts("cards", state.cards, "Card name", onWorthChange);
+    renderCards();
+    renderCardPayments();
     renderAccounts("loans", state.loans, "Loan name", onWorthChange);
     renderAssets();
     document.getElementById("nameA").value = S().nameA;
@@ -1996,7 +2092,8 @@
       renderOneoffs(); recompute();
     });
     document.getElementById("addCard").addEventListener("click", function () {
-      state.cards.push({ name: "", balance: "", id: uid() }); renderAccounts("cards", state.cards, "Card name", onWorthChange); renderOneoffs(); recompute();
+      state.cards.push({ name: "", balance: "", id: uid(), dueDay: "", payAmount: "", payFor: "" });
+      renderCards(); renderCardPayments(); recompute();
     });
     document.getElementById("addLoan").addEventListener("click", function () {
       state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();
