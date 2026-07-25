@@ -313,10 +313,16 @@
   .asof-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--ink-faint); }
   .asof-row input[type="date"] { width: auto; padding: 7px 10px; font-size: 13px; color: var(--ink); }
   .col-head.bills { grid-template-columns: 1fr 78px 96px 34px; }
-  .col-head.ledger { grid-template-columns: 1fr 130px 88px 34px; }
+  .col-head.ledger { grid-template-columns: 1fr 112px 80px 30px 30px; }
   .col-head .r { text-align: left; }
 
-  .line-row.ledger-row { grid-template-columns: 1fr 130px 88px 34px; }
+  .line-row.ledger-row { grid-template-columns: 1fr 112px 80px 30px 30px; }
+  .half-btn {
+    border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink-faint);
+    font-family: inherit; font-size: 13px; font-weight: 700; line-height: 1;
+    padding: 9px 0; border-radius: 8px; cursor: pointer; width: 100%;
+  }
+  .half-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .line-row input[type="date"] { font-size: 13px; color: var(--ink-soft); }
 
   .add-btn {
@@ -428,6 +434,10 @@
   .np-title { font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
   .np-range { font-size: 12px; color: var(--ink-faint); }
   .np-note { font-size: 12px; color: var(--ink-faint); margin: 4px 0 6px; }
+  .subtotal[hidden] { display: none; }
+  .np-projected { border-top-style: dashed; }
+  .np-projected .v.money-out { color: var(--crit); }
+  .np-projected .v.money-in { color: var(--accent); }
   .next-period .tl-item { opacity: .78; }
 
   .note-line { font-size: 12px; color: var(--ink-faint); margin: 2px 0 12px; }
@@ -766,6 +776,10 @@
                   <span>Due that period</span>
                   <span class="v tnum" id="npTotal">$0.00</span>
                 </div>
+                <div class="subtotal np-projected" id="npProjectedRow" hidden>
+                  <span id="npProjectedLabel">Projected at period end</span>
+                  <span class="v tnum" id="npProjected">$0.00</span>
+                </div>
               </div>
             </div>
           </section>
@@ -930,7 +944,7 @@
               <span class="head-total asset tnum" id="sheOwesHead">$0.00</span>
             </div>
             <div class="card-body">
-              <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
+              <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span><span></span></div>
               <div id="sheOwes"></div>
               <button class="add-btn" id="addSheOwes" type="button">+ Add something you paid for</button>
               <div class="subtotal">
@@ -948,7 +962,7 @@
               <span class="head-total debt tnum" id="iOweHead">$0.00</span>
             </div>
             <div class="card-body">
-              <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span></div>
+              <div class="col-head ledger"><span>What for</span><span class="r">Date</span><span class="r">Price</span><span></span><span></span></div>
               <div id="iOwe"></div>
               <button class="add-btn" id="addIOwe" type="button">+ Add something she paid for</button>
               <div class="subtotal">
@@ -1827,7 +1841,7 @@
 
     renderPaycheck(payday, available);
     renderTimeline(upcoming, payday, checking);
-    renderNextPeriod(upcoming, payday);
+    renderNextPeriod(upcoming, payday, available);
     recomputeNetWorth();
     updateCardPayTotals();
   }
@@ -1882,7 +1896,7 @@
   }
 
   // The window after the upcoming payday: informational only, so no running balance.
-  function renderNextPeriod(upcoming, payday) {
+  function renderNextPeriod(upcoming, payday, available) {
     var box = document.getElementById("nextTimeline");
     var wrap = document.getElementById("nextPeriod");
     if (!box || !wrap) return;
@@ -1890,7 +1904,8 @@
     var items = upcoming.filter(function (u) { return u.when > payday && u.when <= payday2; })
                         .sort(function (a, b) { return a.when - b.when; });
 
-    if (!items.length) { wrap.hidden = true; return; }
+    var projRow = document.getElementById("npProjectedRow");
+    if (!items.length) { wrap.hidden = true; if (projRow) projRow.hidden = true; return; }
     wrap.hidden = false;
 
     var start = new Date(payday.getFullYear(), payday.getMonth(), payday.getDate() + 1);
@@ -1913,6 +1928,20 @@
       box.appendChild(item);
     });
     setText("npTotal", money(total));
+
+    // Chain one period further: what's left now + the next check − what that period costs.
+    // Stops just before payday2's check, so it answers "do I coast into the next payday?"
+    var check = projectedCheck(payday);
+    if (check && projRow) {
+      var projected = available + check.net - total;
+      projRow.hidden = false;
+      setText("npProjectedLabel", "Projected by " + fmtShort(dateToISO(payday2)) + ", before that check");
+      var pv = document.getElementById("npProjected");
+      pv.textContent = money(projected);
+      pv.className = "v tnum" + (projected < 0 ? " money-out" : " money-in");
+    } else if (projRow) {
+      projRow.hidden = true;
+    }
   }
 
   function renderTimeline(upcoming, payday, checking) {
@@ -2289,11 +2318,23 @@
       amt.addEventListener("input", function () { item.price = amt.value; touchSettle(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
+      // enter the full bill, tap ½, and it becomes the other person's share
+      var half = el("button", "half-btn", { type: "button", title: "Split in half — halve this amount" });
+      half.textContent = "½";
+      half.setAttribute("aria-label", "Split this amount in half");
+      half.addEventListener("click", function () {
+        var v = num(item.price);
+        if (v <= 0) return;
+        item.price = (Math.round((v / 2) * 100) / 100).toFixed(2);
+        amt.value = item.price;   // update in place; re-rendering would eat the next click
+        touchSettle();
+      });
+
       var del = el("button", "del", { type: "button", "aria-label": "Remove entry" });
       del.innerHTML = "&times;";
       del.addEventListener("click", function () { arr.splice(i, 1); renderLedger(boxId, arr); touchSettle(); });
 
-      row.appendChild(desc); row.appendChild(date); row.appendChild(amtWrap); row.appendChild(del);
+      row.appendChild(desc); row.appendChild(date); row.appendChild(amtWrap); row.appendChild(half); row.appendChild(del);
       box.appendChild(row);
     });
   }
