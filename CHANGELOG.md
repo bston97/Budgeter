@@ -15,6 +15,9 @@ Live app: https://bston97.github.io/Budgeter/
 ### Changed
 - The Runway "Card payments" section is now **"Debt payments"**, covering both cards and loans. Card amounts stay editable (they vary); loan payments show as fixed values since they don't.
 
+### Fixed
+- **Typing a loan's due day could take a payment off the balance.** Entering a two-digit day briefly looked like a different, earlier schedule while you typed (the "1" of "15"), and finishing the number registered as a missed payment. The payment schedule now re-anchors whenever the due day changes, so editing it never charges you.
+
 ## [1.13.0] — 2026-07-25
 
 ### Added

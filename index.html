@@ -1423,7 +1423,9 @@
       due.value = isEom ? "" : (l.dueDay || "");
       due.disabled = isEom;
       function commitDue() {
-        if (!l.lastApplied && l.dueDay) l.lastApplied = dateToISO(mostRecentOccurrence(l.dueDay, stripTime(new Date())));
+        // Re-anchor every time the due day changes. Anchoring only once let a half-typed day
+        // (the "1" of "15") set an earlier schedule, and finishing the number looked like a missed payment.
+        l.lastApplied = l.dueDay ? dateToISO(mostRecentOccurrence(l.dueDay, stripTime(new Date()))) : "";
         save(); renderCardPayments(); recompute();
       }
       due.addEventListener("input", function () { l.dueDay = due.value; commitDue(); });
