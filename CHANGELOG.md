@@ -10,7 +10,14 @@ Live app: https://bston97.github.io/Budgeter/
 ## [1.7.0] — 2026-07-24
 
 ### Added
-- **Shared Settle-up ledger.** The Settle-up tab can now be a single record shared between two specific accounts — editable and visible **only** to those accounts (enforced in Supabase). Everyone else keeps their own private settle-up automatically. Both participants are **named** (editable in-app), so the labels read correctly for whoever is viewing it (e.g. "Brandon paid — Maria owes Brandon"), and edits sync between the two like the rest of the app. Requires a one-time Supabase table + allowlist setup.
+- **Shared Settle-up ledger.** The Settle-up tab can now be a single record shared between two specific accounts — editable and visible **only** to those accounts (enforced in Supabase). Everyone else keeps their own private settle-up automatically. Both participants are **named** (editable in-app), so the labels read correctly for whoever is viewing it (e.g. "Boston paid — Maria owes Boston"), and edits sync between the two like the rest of the app. Requires a one-time Supabase table + allowlist setup.
+
+### Fixed
+- Shared-ledger edits are now **flushed when you close or hide the tab** and **retried after a failure or when the connection returns** — matching the reliability of private saves (previously a last-second shared edit could be lost, and "will retry" never actually retried on the shared path).
+- Returning to the tab no longer re-pulls the shared ledger while one of your shared edits is still saving, so it can't be clobbered by the older server copy.
+- **Existing private settle-up entries migrate into the shared ledger** the first time it activates (only if the shared ledger has never been used), so your history isn't stranded when you switch to shared.
+- The "Reset all data" dialog is now accurate in shared mode — it clarifies the shared ledger is not affected.
+- Credit score input clamps to the real 300–850 range when you leave the field (no more "9999 · Excellent").
 
 ## [1.6.0] — 2026-07-24
 

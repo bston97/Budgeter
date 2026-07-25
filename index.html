@@ -1384,7 +1384,7 @@
 
   // ---------- shared settle-up ledger (two allow-listed accounts) ----------
   var SHARED_ID = "household";
-  var sharedMode = false, sharedData = null, sharedTimer = null;
+  var sharedMode = false, sharedData = null, sharedTimer = null, sharedRetryTimer = null, sharedPending = false;
   function normSettle(x) {
     if (!x || typeof x !== "object") x = {};
     if (!Array.isArray(x.sheOwes)) x.sheOwes = [];
@@ -1399,23 +1399,50 @@
   function saveSettle() { if (sharedMode) scheduleSharedSave(); else save(); }
   function scheduleSharedSave() {
     if (!sb || !sharedMode) return;
+    sharedPending = true;
     setSync("saving");
     clearTimeout(sharedTimer);
     sharedTimer = setTimeout(pushShared, 700);
   }
   function pushShared() {
     if (!sb || !sharedMode) return;
+    clearTimeout(sharedRetryTimer);
+    sharedData.seeded = true; // any write marks the ledger as in-use, so auto-seeding can never fire again
     sb.from("shared_settle").upsert({ id: SHARED_ID, data: sharedData, updated_at: new Date().toISOString() })
-      .then(function (res) { setSync(res && res.error ? "error" : "saved"); })
-      .catch(function () { setSync("error"); });
+      .then(function (res) {
+        if (res && res.error) onSharedFail();
+        else { sharedPending = false; setSync("saved"); }
+      })
+      .catch(onSharedFail);
+  }
+  function onSharedFail() {
+    setSync("error");
+    clearTimeout(sharedRetryTimer);
+    sharedRetryTimer = setTimeout(pushShared, 5000); // keep retrying until it lands
   }
   // members of the shared ledger can read the row (RLS); everyone else gets nothing and stays on their private ledger
   function loadSharedSettle() {
     if (!sb || !user) return;
+    if (sharedPending) return; // don't clobber shared edits that haven't reached the server yet
     sb.from("shared_settle").select("data").eq("id", SHARED_ID).maybeSingle()
       .then(function (res) {
-        if (res && !res.error && res.data && res.data.data) { sharedMode = true; sharedData = normSettle(res.data.data); }
-        else { sharedMode = false; sharedData = null; }
+        if (sharedPending) return; // an edit landed while this request was in flight
+        if (res && !res.error && res.data && res.data.data) {
+          sharedMode = true;
+          sharedData = normSettle(res.data.data);
+          // one-time migration: bring an existing private ledger into the never-yet-used shared one
+          if (!sharedData.seeded && !sharedData.sheOwes.length && !sharedData.iOwe.length &&
+              (state.settle.sheOwes.length || state.settle.iOwe.length)) {
+            var priv = JSON.parse(JSON.stringify(state.settle)); // deep copy so shared and private never share objects
+            sharedData.sheOwes = priv.sheOwes;
+            sharedData.iOwe = priv.iOwe;
+            sharedData.lastUpdated = priv.lastUpdated;
+            sharedData.lastVenmo = priv.lastVenmo;
+            if (priv.nameA && priv.nameA !== "You") sharedData.nameA = priv.nameA;
+            if (priv.nameB) sharedData.nameB = priv.nameB;
+            scheduleSharedSave();
+          }
+        } else { sharedMode = false; sharedData = null; }
         applySettleMode();
       })
       .catch(function () { sharedMode = false; sharedData = null; applySettleMode(); });
@@ -1544,6 +1571,13 @@
     document.getElementById("creditInput").addEventListener("input", function () {
       state.creditScore = this.value; save(); recomputeCredit();
     });
+    document.getElementById("creditInput").addEventListener("blur", function () {
+      if (this.value === "") return;
+      var v = parseInt(this.value, 10);
+      if (isNaN(v)) return;
+      var c = Math.max(300, Math.min(850, v)); // scores only exist in the 300–850 range
+      if (c !== v) { this.value = String(c); state.creditScore = this.value; save(); recomputeCredit(); }
+    });
     document.getElementById("creditDate").addEventListener("input", function () {
       state.creditDate = this.value; save(); recomputeCredit();
     });
@@ -1584,7 +1618,12 @@
       S().nameB = this.value; saveSettle(); recomputeSettle();
     });
     document.getElementById("reset").addEventListener("click", function () {
-      if (confirm("Clear ALL saved data — checking, bills, extra payments, credit score, debts, assets, and the Settle-up ledger with Maria? This clears it everywhere your account syncs and can't be undone.")) {
+      var msg = "Clear ALL saved data — checking, bills, extra payments, credit score, debts, and assets?";
+      msg += sharedMode
+        ? " (The shared settle-up ledger is not affected.)"
+        : " This also clears your settle-up ledger.";
+      msg += " This clears it everywhere your account syncs and can't be undone.";
+      if (confirm(msg)) {
         suppressSave = true;
         try { localStorage.removeItem(KEY); } catch (e) {}
         state = migrate(defaults());
@@ -1675,9 +1714,13 @@
     });
 
     // flush pending saves when leaving the page, and retry when the connection returns
-    window.addEventListener("online", function () { if (user) pushCloud(); });
+    window.addEventListener("online", function () {
+      if (user) pushCloud();
+      if (sharedMode && sharedPending) pushShared();
+    });
     function flushPending() {
       if (user && cloudTimer) { clearTimeout(cloudTimer); pushCloud(); }
+      if (sharedMode && sharedPending) { clearTimeout(sharedTimer); pushShared(); }
     }
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "hidden") flushPending();
