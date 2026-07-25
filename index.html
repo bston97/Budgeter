@@ -925,6 +925,11 @@
     if (!Array.isArray(s.cards)) s.cards = [{ name: "Visa", balance: "" }];
     s.cards.forEach(function (c) { if (!c.id) c.id = uid(); });
     if (!Array.isArray(s.bills)) s.bills = [];
+    // days 29–31 don't exist in every month; they always meant "end of month"
+    s.bills.forEach(function (b) {
+      var n = parseInt(b.due, 10);
+      if (!isNaN(n) && n > 28) b.due = "EOM";
+    });
     if (!Array.isArray(s.loans)) s.loans = [{ name: "Car loan", balance: "" }];
     if (!Array.isArray(s.assets)) s.assets = [
       { name: "Robinhood", balance: "" }, { name: "401(k)", balance: "" }, { name: "Savings", balance: "" }
@@ -1228,13 +1233,17 @@
 
       var dueWrap = el("div", "due-cell");
       var isEom = String(b.due).toUpperCase() === "EOM";
-      var due = el("input", null, { type: "number", min: "1", max: "31", placeholder: "1" });
+      var due = el("input", null, { type: "number", min: "1", max: "28", placeholder: "1", title: "Day of month (1–28), or use EOM" });
       due.value = isEom ? "" : (b.due || "");
       due.disabled = isEom;
-      due.addEventListener("input", function () {
+      // never clamp mid-typing — that turned "05" into "15" as you typed. Correct it on the way out instead.
+      due.addEventListener("input", function () { b.due = due.value; recompute(); });
+      due.addEventListener("blur", function () {
+        if (due.value === "") return;
         var n = parseInt(due.value, 10);
-        if (!isNaN(n)) { if (n > 31) due.value = "31"; else if (n < 1) due.value = "1"; }
-        b.due = due.value; recompute();
+        if (isNaN(n)) { due.value = ""; b.due = ""; recompute(); return; }
+        var c2 = Math.max(1, Math.min(28, n)); // 29–31 don't exist every month; EOM covers those
+        if (String(c2) !== due.value) { due.value = String(c2); b.due = due.value; recompute(); }
       });
       var eomBtn = el("button", "eom-toggle" + (isEom ? " active" : ""), { type: "button", title: "Due at end of month" });
       eomBtn.textContent = "EOM";
