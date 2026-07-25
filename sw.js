@@ -1,6 +1,6 @@
 /* Runway service worker — network-first so a deploy always wins, cache only as an offline fallback. */
-var CACHE = "runway-v2";
-var SHELL = ["./", "./index.html", "./manifest.json",
+var CACHE = "runway-v3";
+var SHELL = ["./", "./index.html", "./manifest.json", "./mark.png",
              "./favicon-32.png", "./favicon-64.png", "./apple-touch-icon.png",
              "./icon-192.png", "./icon-512.png"];
 var LIB = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";

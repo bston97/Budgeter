@@ -93,8 +93,8 @@
     box-shadow: var(--shadow); padding: 34px 28px; max-width: 380px; width: 100%; text-align: center;
   }
   .auth-card .mark {
-    width: 14px; height: 26px; border-radius: 3px; display: inline-block;
-    background: linear-gradient(var(--accent), var(--accent) 60%, var(--warn) 60%);
+    width: 60px; height: 60px; border-radius: 15px; display: inline-block;
+    object-fit: cover; box-shadow: var(--shadow);
   }
   .auth-card h1 { font-size: 28px; margin: 12px 0 6px; letter-spacing: -.02em; }
   .auth-card p { color: var(--ink-soft); font-size: 14px; margin: 0 0 20px; }
@@ -140,9 +140,8 @@
     font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 0;
   }
   .brand .mark {
-    width: 12px; height: 22px; border-radius: 3px; align-self: center;
-    background: linear-gradient(var(--accent), var(--accent) 60%, var(--warn) 60%);
-    display: inline-block;
+    width: 34px; height: 34px; border-radius: 9px; align-self: center;
+    display: block; object-fit: cover; flex: none;
   }
   .brand p { margin: 0; color: var(--ink-faint); font-size: 13px; }
   .header-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -531,7 +530,7 @@
 <!-- ===================== AUTH SCREEN ===================== -->
 <div class="auth-screen" id="authScreen" style="display:none">
   <div class="auth-card">
-    <span class="mark"></span>
+    <img class="mark" src="mark.png" alt="" width="60" height="60" />
     <h1>Runway</h1>
     <p>Sign in to load your budget on any device.</p>
     <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email" />
@@ -551,7 +550,7 @@
   <div class="wrap">
     <header class="top">
       <div class="brand">
-        <span class="mark"></span>
+        <img class="mark" src="mark.png" alt="" width="34" height="34" />
         <div>
           <h1>Runway</h1>
           <p>Cash until your next check — and the bigger picture.</p>
