@@ -272,9 +272,36 @@
     color: var(--ink-faint); font-weight: 700; padding-bottom: 4px;
   }
   .col-head.accts { grid-template-columns: 1fr 108px 34px; }
-  .col-head.accts-date { grid-template-columns: 1fr 92px 120px 34px; }
-  .line-row.asset-row { grid-template-columns: 1fr 92px 120px 34px; }
-  .line-row.asset-row .as-of-date { font-size: 13px; color: var(--ink-soft); padding: 8px 8px; }
+  .col-head.assets-head { grid-template-columns: 1fr 84px 104px 108px 30px; }
+  .line-row.asset-row {
+    display: grid; grid-template-columns: 1fr 84px 104px 108px 30px; gap: 8px; align-items: center;
+    grid-template-areas: "name value type status del";
+  }
+  .asset-row .as-name { grid-area: name; }
+  .asset-row .as-value { grid-area: value; }
+  .asset-row .as-type { grid-area: type; }
+  .asset-row .as-status { grid-area: status; }
+  .asset-row .as-del { grid-area: del; }
+  .as-type {
+    font-family: inherit; font-size: 12px; color: var(--ink); width: 100%;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 4px; outline: none;
+  }
+  .as-type:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .as-status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); min-width: 0; }
+  .as-status.auto { color: var(--ink-faint); }
+  .as-status .as-of-date { font-size: 13px; color: var(--ink-soft); padding: 8px 6px; width: 100%; }
+  .as-status .as-date-text { white-space: nowrap; }
+  .as-status.invest .as-date-text { font-size: 11px; }
+  .trend { font-weight: 700; font-size: 13px; }
+  .trend.up { color: var(--accent); }
+  .trend.down { color: var(--crit); }
+  @media (max-width: 860px) {
+    .col-head.assets-head { display: none; }
+    .line-row.asset-row {
+      grid-template-columns: 1fr 84px 30px;
+      grid-template-areas: "name value del" "type status status";
+    }
+  }
   .asof-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--ink-faint); }
   .asof-row input[type="date"] { width: auto; padding: 7px 10px; font-size: 13px; color: var(--ink); }
   .col-head.bills { grid-template-columns: 1fr 78px 96px 34px; }
@@ -585,7 +612,7 @@
             </div>
             <div class="card-body">
               <p class="note-line">Robinhood, 401(k), savings, cash — anything you own.</p>
-              <div class="col-head accts-date"><span>Account</span><span class="r">Value</span><span class="r">As of</span><span></span></div>
+              <div class="col-head assets-head"><span>Account</span><span class="r">Value</span><span class="r">Type</span><span class="r">As of</span><span></span></div>
               <div id="assets"></div>
               <button class="add-btn" id="addAsset" type="button">+ Add asset</button>
               <div class="subtotal">
@@ -749,9 +776,9 @@
       ],
       loans: [{ name: "Car loan", balance: "" }],
       assets: [
-        { name: "Robinhood", balance: "" },
-        { name: "401(k)", balance: "" },
-        { name: "Savings", balance: "" }
+        { name: "Robinhood", balance: "", type: "investment" },
+        { name: "401(k)", balance: "", type: "account" },
+        { name: "Savings", balance: "", type: "account" }
       ],
       settle: { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "" }
     };
@@ -765,6 +792,7 @@
     if (!Array.isArray(s.assets)) s.assets = [
       { name: "Robinhood", balance: "" }, { name: "401(k)", balance: "" }, { name: "Savings", balance: "" }
     ];
+    s.assets.forEach(function (a) { if (!a.type) a.type = a.date ? "report" : "account"; });
     if (!s.settle || typeof s.settle !== "object") s.settle = { sheOwes: [], iOwe: [], lastUpdated: "", lastVenmo: "" };
     if (!Array.isArray(s.settle.sheOwes)) s.settle.sheOwes = [];
     if (!Array.isArray(s.settle.iOwe)) s.settle.iOwe = [];
@@ -877,6 +905,11 @@
   function dateToISO(d) {
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
+  function fmtShort(iso) {
+    var p = String(iso).split("-");
+    if (p.length !== 3) return iso;
+    return (+p[1]) + "/" + (+p[2]) + "/" + String(p[0]).slice(2); // e.g. 7/24/26
+  }
 
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var DAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -929,6 +962,81 @@
       del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange, opts); onchange(); });
 
       row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
+  var ASSET_TYPES = [
+    { v: "account", label: "Account" },
+    { v: "investment", label: "Investment" },
+    { v: "report", label: "Report" }
+  ];
+  // Assets get a type that drives the 3rd column: report=editable date, account=auto date, investment=auto date + trend arrow
+  function renderAssets() {
+    var box = document.getElementById("assets");
+    box.innerHTML = "";
+    state.assets.forEach(function (c, i) {
+      var type = c.type || "account";
+      var row = el("div", "line-row asset-row");
+
+      var name = el("input", "as-name", { type: "text", placeholder: "Account name" });
+      name.value = c.name;
+      name.addEventListener("input", function () { c.name = name.value; save(); });
+
+      var amtWrap = el("div", "amt as-value");
+      var cur = el("span", "cur"); cur.textContent = "$";
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      amt.value = c.balance;
+      var focusVal = amt.value;
+      amt.addEventListener("focus", function () { focusVal = amt.value; });
+      amt.addEventListener("input", function () { c.balance = amt.value; recomputeNetWorth(); save(); });
+      amt.addEventListener("blur", function () {
+        if (type !== "account" && type !== "investment") return;
+        if (num(amt.value) === num(focusVal)) return; // only stamp when the value actually changed
+        if (type === "investment") c.prev = focusVal; // remember the value before this change for the trend arrow
+        c.date = todayISO();
+        save();
+        renderAssets();
+      });
+      amtWrap.appendChild(cur); amtWrap.appendChild(amt);
+
+      var sel = el("select", "as-type", { "aria-label": "Asset type" });
+      ASSET_TYPES.forEach(function (t) {
+        var o = el("option", null, { value: t.v });
+        o.textContent = t.label;
+        if (t.v === type) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", function () { c.type = sel.value; save(); renderAssets(); });
+
+      var status = el("div", "as-status");
+      if (type === "report") {
+        var d = el("input", "as-of-date", { type: "date", title: "As-of date (optional)" });
+        d.value = c.date || "";
+        d.addEventListener("input", function () { c.date = d.value; save(); });
+        status.appendChild(d);
+      } else {
+        status.classList.add("auto");
+        if (type === "investment") status.classList.add("invest");
+        var dateSpan = el("span", "as-date-text");
+        dateSpan.textContent = c.date ? fmtShort(c.date) : "—";
+        status.appendChild(dateSpan);
+        if (type === "investment" && c.prev && c.balance !== "") {
+          var diff = num(c.balance) - num(c.prev);
+          if (diff !== 0) {
+            var arrow = el("span", "trend " + (diff > 0 ? "up" : "down"));
+            arrow.textContent = diff > 0 ? "▲" : "▼";
+            arrow.title = (diff > 0 ? "Up" : "Down") + " from " + fmtShort(c.date || "");
+            status.appendChild(arrow);
+          }
+        }
+      }
+
+      var del = el("button", "del as-del", { type: "button", "aria-label": "Remove" });
+      del.innerHTML = "&times;";
+      del.addEventListener("click", function () { state.assets.splice(i, 1); renderAssets(); recomputeNetWorth(); save(); });
+
+      row.appendChild(name); row.appendChild(amtWrap); row.appendChild(sel); row.appendChild(status); row.appendChild(del);
       box.appendChild(row);
     });
   }
@@ -1266,7 +1374,7 @@
     renderOneoffs();
     renderAccounts("cards", state.cards, "Card name", onWorthChange);
     renderAccounts("loans", state.loans, "Loan name", onWorthChange);
-    renderAccounts("assets", state.assets, "Account name", onWorthChange, { date: true });
+    renderAssets();
     renderLedger("sheOwes", state.settle.sheOwes);
     renderLedger("iOwe", state.settle.iOwe);
     recompute();
@@ -1299,7 +1407,7 @@
       state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();
     });
     document.getElementById("addAsset").addEventListener("click", function () {
-      state.assets.push({ name: "", balance: "" }); renderAccounts("assets", state.assets, "Account name", onWorthChange, { date: true }); recompute();
+      state.assets.push({ name: "", balance: "", type: "account" }); renderAssets(); recomputeNetWorth();
     });
     document.getElementById("addSheOwes").addEventListener("click", function () {
       state.settle.sheOwes.push({ desc: "", date: todayISO(), price: "" });

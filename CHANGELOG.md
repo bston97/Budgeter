@@ -7,6 +7,15 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.5.0] — 2026-07-24
+
+### Added
+- **Asset types.** Each asset now has a type that drives its "as of" column:
+  - **Report** (car, property): an editable date you set — e.g. from a Carfax report.
+  - **Account** (savings, 401k): a read-only date that auto-stamps whenever the value changes.
+  - **Investment** (Robinhood, Acorns): the same auto-date (smaller) plus a **▲/▼ trend arrow** showing whether the value went up or down since its last change.
+- The whole assets section reflows to two rows per item on narrow/phone screens so nothing gets cramped.
+
 ## [1.4.0] — 2026-07-24
 
 ### Added
