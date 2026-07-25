@@ -2098,8 +2098,11 @@
   }
   function S() { return sharedMode ? sharedData : state.settle; } // active settle source
   function saveSettle() { if (sharedMode) scheduleSharedSave(); else save(); }
+  // seq lets a push know whether another edit was queued behind it; recentRevs identifies our own realtime echoes
+  var sharedSeq = 0, recentRevs = [];
   function scheduleSharedSave() {
     if (!sb || !sharedMode) return;
+    sharedSeq++;
     sharedPending = true;
     setSync("saving");
     clearTimeout(sharedTimer);
@@ -2108,11 +2111,19 @@
   function pushShared() {
     if (!sb || !sharedMode) return;
     clearTimeout(sharedRetryTimer);
+    var seqAtPush = sharedSeq;
     sharedData.seeded = true; // any write marks the ledger as in-use, so auto-seeding can never fire again
+    sharedData._rev = uid(); // client id for this write, so its realtime echo can be recognized
+    recentRevs.push(sharedData._rev);
+    if (recentRevs.length > 20) recentRevs.shift();
     sb.from("shared_settle").upsert({ id: SHARED_ID, data: sharedData, updated_at: new Date().toISOString() })
       .then(function (res) {
         if (res && res.error) onSharedFail();
-        else { sharedPending = false; setSync("saved"); flushRemoteSettle(); }
+        else {
+          if (seqAtPush === sharedSeq) sharedPending = false; // don't clear if another edit queued meanwhile
+          setSync("saved");
+          flushRemoteSettle();
+        }
       })
       .catch(onSharedFail);
   }
@@ -2244,7 +2255,8 @@
             function (payload) {
               var d = payload && payload.new && payload.new.data;
               if (!d) return;
-              if (JSON.stringify(d) === JSON.stringify(sharedData)) return; // echo of our own write
+              // our own write coming back — jsonb reorders keys, so compare by rev id, not by stringify
+              if (d._rev && recentRevs.indexOf(d._rev) >= 0) return;
               if (sharedPending || editingSettle()) { pendingRemote = d; return; }
               applyRemoteSettle(d);
             })

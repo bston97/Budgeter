@@ -16,6 +16,7 @@ Live app: https://bston97.github.io/Budgeter/
 
 ### Fixed
 - A debt payment landing beyond the next pay period was labelled "next period" regardless of how far out it was. It now says **"later"** unless it genuinely falls in the next window.
+- **Closed a rapid-typing race in the shared ledger.** Postgres reorders JSON keys, so the app never recognized its own realtime echoes — and in a narrow window (your first save completing while you kept typing), a buffered echo could roll back and then re-save your newest keystrokes away. Writes are now tagged with a client rev id: own echoes are ignored outright, and a completed save no longer clears the pending flag when a newer edit is already queued.
 
 ## [1.14.0] — 2026-07-25
 
