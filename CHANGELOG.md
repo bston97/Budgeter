@@ -7,15 +7,27 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.18.0] — 2026-07-26
+
+### Added
+- **Bills can be ticked off as paid.** Each bill has a checkbox: tick it when you pay early and it strikes through, shows a "paid" tag on the timeline, and stops counting against your available cash. Because that money has genuinely left your account, ticking also **subtracts the bill from your checking balance** — so available stays honest instead of jumping up by the bill amount. Unticking reverses both exactly.
+- Bills **tick themselves once their date passes**, and now stay on the timeline for the rest of the pay period instead of silently rolling to next month, so you can see what's already cleared.
+
+The auto-tick only adjusts checking for bills the app was tracking while they were still upcoming. A bill entered with a date already gone by is ticked without touching the balance, since the number you typed already accounts for it.
+
+## [1.17.0] — 2026-07-25
+
+### Added
+- **Payday rollover nudge.** The first time you open the app after a payday passes, a bar appears on the Runway tab pointing out that your checking balance is probably stale. Typing your real bank balance is the primary action; the figure the app projected for that payday is offered underneath, and tapping "use it" only fills the box — you still confirm. Dismissible, shown once per payday, and never fires retroactively when you first set the app up.
+
+### Fixed
+- The nudge's "we projected $X" offer could never actually appear — the projection was overwritten with the *next* period's figure before the bar read it. It's now preserved until you acknowledge that payday. The bar also appears live if the app stays open across a payday (not just on reload), typing something non-numeric no longer silently sets checking to $0, and "use it" fills a clean two-decimal amount.
+
 ## [1.16.0] — 2026-07-25
 
 ### Added
 - **Two-period projection.** The Next pay period block now chains the whole picture — what's left today, plus your next check, minus what that period costs — into a single "Projected by [date], before that check" figure. It answers whether you coast into the payday *after* next, not just the next one. Turns red if you'd land short, and hides itself when no paycheck is set up (there'd be nothing to project).
 - **Split-in-half button on settle-up entries.** Enter the full bill you paid, tap **½**, and it halves to the other person's share — rounded to the cent, with no mental math.
-- **Payday rollover nudge.** The first time you open the app after a payday passes, a bar appears on the Runway tab pointing out that your checking balance is probably stale. Typing your real bank balance is the primary action; the figure the app projected for that payday is offered underneath, and tapping "use it" only fills the box — you still confirm. Dismissible, shown once per payday, and never fires retroactively when you first set the app up.
-
-### Fixed
-- The nudge's "we projected $X" offer could never actually appear — the projection was overwritten with the *next* period's figure before the bar read it. It's now preserved until you acknowledge that payday. The bar also appears live if the app stays open across a payday (not just on reload), typing something non-numeric no longer silently sets checking to $0, and "use it" fills a clean two-decimal amount.
 
 ## [1.15.0] — 2026-07-25
 

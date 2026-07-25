@@ -254,7 +254,19 @@
     display: grid; grid-template-columns: 1fr 108px 34px; gap: 8px; align-items: center;
     padding: 8px 0; border-top: 1px solid var(--line);
   }
-  .line-row.bills-row { grid-template-columns: 1fr 78px 96px 34px; }
+  .line-row.bills-row { grid-template-columns: 26px 1fr 72px 92px 30px; }
+  .paid-box {
+    width: 22px; height: 22px; padding: 0; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line-strong); background: var(--surface-2);
+    color: transparent; font-size: 13px; font-weight: 700; line-height: 1; font-family: inherit;
+  }
+  .paid-box:hover { border-color: var(--accent); color: var(--ink-faint); }
+  .paid-box.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .paid-box:disabled { opacity: .35; cursor: default; }
+  .bills-row.is-paid .amt input, .bills-row.is-paid input[type="text"] { color: var(--ink-faint); text-decoration: line-through; }
+  .tl-item.paid .tl-name, .tl-item.paid .tl-amt { color: var(--ink-faint); }
+  .tl-item.paid .tl-amt { text-decoration: line-through; }
+  .pill.paid { background: var(--accent-soft); color: var(--accent); }
   .due-cell { display: flex; gap: 4px; align-items: center; }
   .due-cell input { width: 44px; padding: 8px 4px; text-align: center; }
   .due-cell input:disabled { opacity: .4; }
@@ -312,7 +324,7 @@
   }
   .asof-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--ink-faint); }
   .asof-row input[type="date"] { width: auto; padding: 7px 10px; font-size: 13px; color: var(--ink); }
-  .col-head.bills { grid-template-columns: 1fr 78px 96px 34px; }
+  .col-head.bills { grid-template-columns: 26px 1fr 72px 92px 30px; }
   .col-head.ledger { grid-template-columns: 1fr 112px 80px 30px 30px; }
   .col-head .r { text-align: left; }
 
@@ -730,7 +742,7 @@
             <div class="card-head"><h2>Bills &amp; expenses</h2></div>
             <div class="card-body">
               <div class="col-head bills">
-                <span>Name</span><span class="r">Amount</span><span class="r">Due day</span><span></span>
+                <span></span><span>Name</span><span class="r">Amount</span><span class="r">Due day</span><span></span>
               </div>
               <div id="bills"></div>
               <button class="add-btn" id="addBill" type="button">+ Add bill</button>
@@ -1096,6 +1108,9 @@
     s.bills.forEach(function (b) {
       var n = parseInt(b.due, 10);
       if (!isNaN(n) && n > 28) b.due = "EOM";
+      ["paidFor", "unpaidFor", "paidAdj", "watching"].forEach(function (k) {
+        if (typeof b[k] !== "string") b[k] = b[k] != null ? String(b[k]) : "";
+      });
     });
     if (!Array.isArray(s.loans)) s.loans = [{ name: "Car loan", balance: "" }];
     s.loans.forEach(function (l) {
@@ -1230,6 +1245,27 @@
     return null;
   }
 
+  // The pay period surrounding today: the day after the last payday, through the next one.
+  function currentPeriod(today) {
+    var t = stripTime(today);
+    var end = nextPayday(t);
+    var last = mostRecentPayday(t);
+    var start = last ? new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1) : t;
+    return { start: start, end: end };
+  }
+  // A bill's occurrence inside a given window (periods are ≤16 days, so at most one).
+  function occurrenceInPeriod(dueDay, start, end) {
+    if (!dueDay) return null;
+    var cands = [
+      occurrenceInMonth(dueDay, start.getFullYear(), start.getMonth()),
+      occurrenceInMonth(dueDay, end.getFullYear(), end.getMonth())
+    ];
+    for (var i = 0; i < cands.length; i++) {
+      if (cands[i] >= start && cands[i] <= end) return cands[i];
+    }
+    return null;
+  }
+
   function billDate(dueDay, today) {
     var t = stripTime(today);
     function make(monthOffset) {
@@ -1293,6 +1329,53 @@
         last = next;
         changed = true;
       }
+    });
+    return changed;
+  }
+
+  // Paid money has already left the account, so the paid flag and the checking balance
+  // must move together — otherwise available jumps up by the bill amount.
+  function adjustChecking(delta) {
+    state.checking = String(Math.round((num(state.checking) + delta) * 100) / 100);
+    var box = document.getElementById("checking");
+    if (box) box.value = state.checking;
+  }
+  function setBillPaid(b, occIso, paid) {
+    var amt = num(b.amount);
+    if (paid) {
+      if (b.paidFor === occIso) return;
+      b.paidFor = occIso;
+      b.unpaidFor = "";
+      b.paidAdj = "1";      // remember we debited, so unchecking can refund exactly once
+      adjustChecking(-amt);
+    } else {
+      var refund = b.paidFor === occIso && b.paidAdj === "1";
+      b.paidFor = "";
+      b.unpaidFor = occIso; // don't let the auto-marker re-check what they just cleared
+      b.paidAdj = "";
+      if (refund) adjustChecking(amt);
+    }
+  }
+  // Auto-check bills whose date has gone by. Only debits checking for bills we were actually
+  // watching while they were still upcoming — one first seen already past was paid before we
+  // knew about it, so the balance already reflects it.
+  function applyPassedBills() {
+    var today = stripTime(new Date());
+    var per = currentPeriod(today);
+    var changed = false;
+    state.bills.forEach(function (b) {
+      if (!b.due) return;
+      var occ = occurrenceInPeriod(b.due, per.start, per.end);
+      if (!occ) return;
+      var iso = dateToISO(occ);
+      if (b.paidFor === iso || b.unpaidFor === iso) return; // already decided
+      if (occ >= today) {
+        if (b.watching !== iso) { b.watching = iso; changed = true; } // remember we saw it coming
+        return;
+      }
+      if (b.watching === iso) setBillPaid(b, iso, true); // watched it land — debit checking
+      else b.paidFor = iso;                              // never tracked upcoming — tick only
+      changed = true;
     });
     return changed;
   }
@@ -1725,8 +1808,35 @@
   function renderBills() {
     var box = document.getElementById("bills");
     box.innerHTML = "";
+    var period = currentPeriod(new Date());
     state.bills.forEach(function (b, i) {
+      var occ, occIso, isPaid;
       var row = el("div", "line-row bills-row");
+
+      var paidBox = el("button", "paid-box", { type: "button" });
+      paidBox.textContent = "✓";
+      paidBox.setAttribute("aria-label", "Mark " + (b.name || "bill") + " paid");
+      // recomputed in place when the due day changes, so the tick never goes stale mid-edit
+      function refreshPaidBox() {
+        occ = occurrenceInPeriod(b.due, period.start, period.end);
+        occIso = occ ? dateToISO(occ) : "";
+        isPaid = !!occIso && b.paidFor === occIso;
+        paidBox.disabled = !occ; // nothing due this period to tick off
+        paidBox.className = "paid-box" + (isPaid ? " on" : "");
+        paidBox.title = !occ ? "Not due this pay period"
+          : isPaid ? "Paid — click to undo (adds it back to checking)"
+                   : "Mark paid (subtracts it from checking)";
+        paidBox.setAttribute("aria-pressed", isPaid ? "true" : "false");
+        row.classList.toggle("is-paid", isPaid);
+      }
+      paidBox.addEventListener("click", function () {
+        if (!occIso) return;
+        setBillPaid(b, occIso, !isPaid);
+        refreshPaidBox();
+        recompute();
+      });
+      row.appendChild(paidBox);
+
       var name = el("input", null, { type: "text", placeholder: "Bill name" });
       name.value = b.name;
       name.addEventListener("input", function () { b.name = name.value; recompute(); });
@@ -1744,13 +1854,14 @@
       due.value = isEom ? "" : (b.due || "");
       due.disabled = isEom;
       // never clamp mid-typing — that turned "05" into "15" as you typed. Correct it on the way out instead.
-      due.addEventListener("input", function () { b.due = due.value; recompute(); });
+      due.addEventListener("input", function () { b.due = due.value; refreshPaidBox(); recompute(); });
       due.addEventListener("blur", function () {
-        if (due.value === "") return;
+        if (due.value === "") { refreshPaidBox(); return; }
         var n = parseInt(due.value, 10);
-        if (isNaN(n)) { due.value = ""; b.due = ""; recompute(); return; }
+        if (isNaN(n)) { due.value = ""; b.due = ""; refreshPaidBox(); recompute(); return; }
         var c2 = Math.max(1, Math.min(28, n)); // 29–31 don't exist every month; EOM covers those
-        if (String(c2) !== due.value) { due.value = String(c2); b.due = due.value; recompute(); }
+        if (String(c2) !== due.value) { due.value = String(c2); b.due = due.value; }
+        refreshPaidBox(); recompute();
       });
       var eomBtn = el("button", "eom-toggle" + (isEom ? " active" : ""), { type: "button", title: "Due at end of month" });
       eomBtn.textContent = "EOM";
@@ -1770,6 +1881,7 @@
       del.addEventListener("click", function () { state.bills.splice(i, 1); renderBills(); recompute(); });
 
       row.appendChild(name); row.appendChild(amtWrap); row.appendChild(dueWrap); row.appendChild(del);
+      refreshPaidBox();
       box.appendChild(row);
     });
   }
@@ -1833,6 +1945,7 @@
     if (clearOldOneoffs()) renderOneoffs(); // expire one-offs if a payday passed while the app stayed open
     if (clearOldCardPayments()) renderCardPayments(); // same for card payments whose due date has passed
     if (applyDueLoanPayments()) { renderLoans(); renderCardPayments(); } // loan payments actually reduce the balance
+    if (applyPassedBills()) renderBills(); // tick off bills whose date went by, debiting checking to match
     var today = new Date();
     var payday = nextPayday(today);
     var checking = num(state.checking);
@@ -1841,12 +1954,18 @@
     document.getElementById("billsTotal").textContent = money(billsTotal);
 
     var upcoming = [];
+    var period = currentPeriod(today);
     state.bills.forEach(function (b) {
       var amt = num(b.amount);
       if (!b.name && !amt) return;
-      var when = billOccurrence(b, today);
+      // Prefer this period's occurrence so already-paid bills stay on screen, ticked off,
+      // instead of silently rolling to next month the moment their date passes.
+      var when = occurrenceInPeriod(b.due, period.start, period.end);
+      var paid = false;
+      if (when) paid = b.paidFor === dateToISO(when);
+      else when = billOccurrence(b, today); // falls outside this period — used for the next-period preview
       if (!when) return;
-      upcoming.push({ name: b.name || "Bill", amount: amt, when: when, beforePay: when <= payday });
+      upcoming.push({ name: b.name || "Bill", amount: amt, when: when, beforePay: when <= payday, paid: paid });
     });
     state.oneoffs.forEach(function (o) {
       var amt = num(o.amount);
@@ -1880,7 +1999,8 @@
     netEl.textContent = (oneoffNet > 0 ? "−" : oneoffNet < 0 ? "+" : "") + money(Math.abs(oneoffNet));
     netEl.className = "v tnum" + (oneoffNet > 0 ? " money-out" : oneoffNet < 0 ? " money-in" : "");
 
-    var billsBefore = upcoming.reduce(function (s, u) { return s + (u.beforePay ? u.amount : 0); }, 0);
+    // paid items still show on the timeline, but their money is already gone from checking
+    var billsBefore = upcoming.reduce(function (s, u) { return s + (u.beforePay && !u.paid ? u.amount : 0); }, 0);
     var available = checking - billsBefore;
     var daysLeft = Math.max(0, Math.round((stripTime(payday) - stripTime(today)) / 86400000));
 
@@ -2061,14 +2181,15 @@
     } else {
       var running = checking;
       before.forEach(function (u) {
-        running -= u.amount;
-        var item = el("div", "tl-item");
+        if (!u.paid) running -= u.amount; // already-paid money never left this running total
+        var item = el("div", "tl-item" + (u.paid ? " paid" : ""));
         var date = el("div", "tl-date");
         date.innerHTML = '<div class="d">' + u.when.getDate() + '</div><div class="m">' + MON[u.when.getMonth()] + '</div>';
         var mid = el("div");
         var moneyIn = u.amount < 0;
         var soon = (stripTime(u.when) - stripTime(new Date())) / 86400000;
-        var pill = soon <= 3 && !moneyIn ? ' <span class="pill soon">soon</span>' : '';
+        var pill = u.paid ? ' <span class="pill paid">paid</span>'
+                 : (soon <= 3 && !moneyIn ? ' <span class="pill soon">soon</span>' : '');
         mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + pill + '</div>' +
                         '<div class="tl-sub">' + (u.oneOff ? (moneyIn ? "money in" : "money out") : DAY[u.when.getDay()]) + '</div>';
         var amt = el("div", "tl-amt" + (moneyIn ? " in" : ""));
