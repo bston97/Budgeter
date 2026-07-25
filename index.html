@@ -1886,8 +1886,13 @@
 
     // Remember what we expect the balance to be after this payday, so the rollover nudge
     // can show it later. Saved here (rather than at the top) so it lands in the same write.
-    var chk = projectedCheck(payday);
-    state.projectedAfter = { d: dateToISO(payday), n: available + (chk ? chk.net : 0) };
+    // Don't overwrite the projection for a payday still awaiting acknowledgment — recompute
+    // runs before the rollover bar renders, and clobbering it would erase the offer it shows.
+    var pendingRo = pendingRollover();
+    if (!(pendingRo && state.projectedAfter && state.projectedAfter.d === dateToISO(pendingRo))) {
+      var chk = projectedCheck(payday);
+      state.projectedAfter = { d: dateToISO(payday), n: available + (chk ? chk.net : 0) };
+    }
     save();
 
     var availEl = document.getElementById("available");
@@ -1911,6 +1916,7 @@
     renderNextPeriod(upcoming, payday, available);
     recomputeNetWorth();
     updateCardPayTotals();
+    renderRollover(); // so the nudge appears even if the tab stayed open across a payday
   }
 
   // A payday the user hasn't acknowledged yet, or null.
@@ -2533,7 +2539,7 @@
       var due = pendingRollover();
       if (!due) return;
       var box = document.getElementById("roAmount");
-      if (String(box.value).trim() === "") { box.focus(); return; } // nothing typed yet
+      if (!/[0-9]/.test(box.value)) { box.focus(); return; } // no number typed yet — don't silently set $0
       state.checking = String(num(box.value));
       document.getElementById("checking").value = state.checking;
       box.value = "";
@@ -2551,7 +2557,7 @@
     document.getElementById("roUseProj").addEventListener("click", function () {
       var proj = state.projectedAfter;
       if (!proj) return;
-      document.getElementById("roAmount").value = String(proj.n); // fill it, don't commit — they still confirm
+      document.getElementById("roAmount").value = (Math.round(proj.n * 100) / 100).toFixed(2); // fill it, don't commit — they still confirm
       document.getElementById("roAmount").focus();
     });
 
