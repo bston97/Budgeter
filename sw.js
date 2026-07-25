@@ -1,6 +1,8 @@
 /* Runway service worker — network-first so a deploy always wins, cache only as an offline fallback. */
-var CACHE = "runway-v1";
-var SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg", "./icon-192.png", "./icon-512.png"];
+var CACHE = "runway-v2";
+var SHELL = ["./", "./index.html", "./manifest.json",
+             "./favicon-32.png", "./favicon-64.png", "./apple-touch-icon.png",
+             "./icon-192.png", "./icon-512.png"];
 var LIB = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 
 self.addEventListener("install", function (e) {

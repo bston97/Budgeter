@@ -10,8 +10,9 @@
 <meta name="apple-mobile-web-app-title" content="Runway" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="manifest" href="manifest.json" />
-<link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="icon" href="favicon-64.png" sizes="64x64" type="image/png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <title>Runway — Budget &amp; Net Worth</title>
 <style>
   :root {
@@ -1478,13 +1479,16 @@
       var c = item.c, when = item.when, isLoan = item.loan;
       var beforePay = when <= payday;
       var daysAway = Math.round((stripTime(when) - stripTime(today)) / 86400000);
+      // "next period" only if it really lands before the payday after this one
+      var inNextPeriod = !beforePay && when <= nextPayday(payday);
 
       var row = el("div", "cardpay-row");
       var nameWrap = el("div", "cp-name");
       nameWrap.textContent = c.name || (isLoan ? "Loan" : "Card");
       var dueLbl = el("span", "cp-due" + (beforePay && daysAway <= 3 ? " soon" : beforePay ? "" : " next"));
       dueLbl.textContent = "due " + MON[when.getMonth()] + " " + when.getDate() +
-        (beforePay ? (daysAway <= 0 ? " · today" : " · in " + daysAway + "d") : " · next period");
+        (beforePay ? (daysAway <= 0 ? " · today" : " · in " + daysAway + "d")
+                   : (inNextPeriod ? " · next period" : " · later"));
       nameWrap.appendChild(dueLbl);
       row.appendChild(nameWrap);
 

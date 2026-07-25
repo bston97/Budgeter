@@ -7,6 +7,14 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.15.0] — 2026-07-25
+
+### Changed
+- **New app icon** — the duct-taped wallet. Generated at every size from the source art: home-screen icons (192/512, with a maskable-safe margin so Android's circular crop doesn't clip it), an Apple touch icon, and browser favicons. The square crop drops the drawn-on white frame (the OS applies its own rounded corners) and the generator watermark, and the PWA splash background now matches the icon's green.
+
+### Fixed
+- A debt payment landing beyond the next pay period was labelled "next period" regardless of how far out it was. It now says **"later"** unless it genuinely falls in the next window.
+
 ## [1.14.0] — 2026-07-25
 
 ### Added
