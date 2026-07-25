@@ -318,6 +318,20 @@
   }
   .add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
+  /* one-off payment → credit card link */
+  .oneoff-item { padding: 2px 0; }
+  .oneoff-item + .oneoff-item { border-top: 1px solid var(--line); }
+  .oneoff-item .line-row { border-top: none; }
+  .oneoff-link { display: flex; align-items: center; gap: 8px; padding: 2px 0 8px; font-size: 12px; color: var(--ink-faint); flex-wrap: wrap; }
+  .oneoff-link-lbl { white-space: nowrap; }
+  .oneoff-card {
+    font-family: inherit; font-size: 12px; color: var(--ink); background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; max-width: 170px; outline: none;
+  }
+  .oneoff-card:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .oneoff-after { font-weight: 600; color: var(--ink-soft); }
+  .oneoff-after.neg { color: var(--crit); }
+
   .subtotal {
     display: flex; justify-content: space-between; align-items: baseline;
     margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-strong);
@@ -787,6 +801,7 @@
     if (!s || typeof s !== "object") s = {};
     if (typeof s.checking !== "string") s.checking = s.checking != null ? String(s.checking) : "";
     if (!Array.isArray(s.cards)) s.cards = [{ name: "Visa", balance: "" }];
+    s.cards.forEach(function (c) { if (!c.id) c.id = uid(); });
     if (!Array.isArray(s.bills)) s.bills = [];
     if (!Array.isArray(s.loans)) s.loans = [{ name: "Car loan", balance: "" }];
     if (!Array.isArray(s.assets)) s.assets = [
@@ -855,6 +870,7 @@
   }
 
   // ---------- utilities ----------
+  function uid() { return "c" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
   function num(v) {
     var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
@@ -930,16 +946,15 @@
     });
   }
 
-  // Generic name+balance row renderer (cards, loans, assets). opts.date adds an optional "as of" date column.
-  function renderAccounts(boxId, arr, namePh, onchange, opts) {
-    var withDate = opts && opts.date;
+  // Generic name+balance row renderer (credit cards, loans). Assets use renderAssets.
+  function renderAccounts(boxId, arr, namePh, onchange) {
     var box = document.getElementById(boxId);
     box.innerHTML = "";
     arr.forEach(function (c, i) {
-      var row = el("div", "line-row" + (withDate ? " asset-row" : ""));
+      var row = el("div", "line-row");
       var name = el("input", null, { type: "text", placeholder: namePh });
       name.value = c.name;
-      name.addEventListener("input", function () { c.name = name.value; save(); });
+      name.addEventListener("input", function () { c.name = name.value; save(); if (boxId === "cards") updateOneoffAfters(); });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
@@ -948,20 +963,11 @@
       amt.addEventListener("input", function () { c.balance = amt.value; onchange(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
-      row.appendChild(name); row.appendChild(amtWrap);
-
-      if (withDate) {
-        var date = el("input", "as-of-date", { type: "date", title: "As-of date (optional)" });
-        date.value = c.date || "";
-        date.addEventListener("input", function () { c.date = date.value; save(); });
-        row.appendChild(date);
-      }
-
       var del = el("button", "del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
-      del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange, opts); onchange(); });
+      del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange); onchange(); if (boxId === "cards") renderOneoffs(); });
 
-      row.appendChild(del);
+      row.appendChild(name); row.appendChild(amtWrap); row.appendChild(del);
       box.appendChild(row);
     });
   }
@@ -1089,14 +1095,60 @@
     });
   }
 
+  var oneoffUpdaters = [];
+  function updateOneoffAfters() { oneoffUpdaters.forEach(function (f) { f(); }); }
+  function cardById(id) {
+    if (!id) return null;
+    for (var i = 0; i < state.cards.length; i++) if (state.cards[i].id === id) return state.cards[i];
+    return null;
+  }
+  // best-guess a credit card from the payment description (longest card name that appears in the text)
+  function suggestCard(desc) {
+    var d = String(desc).toLowerCase();
+    var best = "", bestLen = 0;
+    state.cards.forEach(function (c) {
+      var name = String(c.name).toLowerCase().trim();
+      if (name && d.indexOf(name) >= 0 && name.length > bestLen) { best = c.id; bestLen = name.length; }
+    });
+    return best;
+  }
+
   function renderOneoffs() {
     var box = document.getElementById("oneoffs");
     box.innerHTML = "";
+    oneoffUpdaters = [];
+    var namedCards = state.cards.filter(function (c) { return String(c.name).trim() !== ""; });
+
     state.oneoffs.forEach(function (o, i) {
+      if (o.cardId && !cardById(o.cardId)) o.cardId = ""; // drop links to deleted cards
+
+      var wrap = el("div", "oneoff-item");
+      var afterSpan = el("span", "oneoff-after");
+      var cardSelect = null;
+
+      function updateAfter() {
+        var card = cardById(o.cardId);
+        if (card) {
+          var after = num(card.balance) - num(o.amount);
+          afterSpan.textContent = "→ " + (card.name || "card") + " after: " + money(after);
+          afterSpan.className = "oneoff-after" + (after < 0 ? " neg" : "");
+        } else {
+          afterSpan.textContent = "";
+          afterSpan.className = "oneoff-after";
+        }
+      }
+
       var row = el("div", "line-row");
-      var desc = el("input", null, { type: "text", placeholder: "What for (e.g. Visa payment)" });
+      var desc = el("input", null, { type: "text", placeholder: "What for (e.g. Apple Card payment)" });
       desc.value = o.desc || "";
-      desc.addEventListener("input", function () { o.desc = desc.value; recompute(); });
+      desc.addEventListener("input", function () {
+        o.desc = desc.value;
+        if (!o.cardManual && namedCards.length) {
+          o.cardId = suggestCard(o.desc);
+          if (cardSelect) cardSelect.value = o.cardId || "";
+        }
+        recompute();
+      });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
@@ -1110,7 +1162,28 @@
       del.addEventListener("click", function () { state.oneoffs.splice(i, 1); renderOneoffs(); recompute(); });
 
       row.appendChild(desc); row.appendChild(amtWrap); row.appendChild(del);
-      box.appendChild(row);
+      wrap.appendChild(row);
+
+      if (namedCards.length) {
+        var link = el("div", "oneoff-link");
+        var lbl = el("span", "oneoff-link-lbl"); lbl.textContent = "Apply to";
+        cardSelect = el("select", "oneoff-card", { "aria-label": "Apply payment to card" });
+        var none = el("option", null, { value: "" }); none.textContent = "— none —"; cardSelect.appendChild(none);
+        namedCards.forEach(function (c) {
+          var op = el("option", null, { value: c.id }); op.textContent = c.name;
+          cardSelect.appendChild(op);
+        });
+        cardSelect.value = o.cardId || "";
+        cardSelect.addEventListener("change", function () {
+          o.cardId = cardSelect.value; o.cardManual = true; updateAfter(); save();
+        });
+        link.appendChild(lbl); link.appendChild(cardSelect); link.appendChild(afterSpan);
+        wrap.appendChild(link);
+      }
+
+      updateAfter();
+      oneoffUpdaters.push(updateAfter);
+      box.appendChild(wrap);
     });
   }
 
@@ -1179,6 +1252,7 @@
 
     renderTimeline(upcoming, payday, checking);
     recomputeNetWorth();
+    updateOneoffAfters();
   }
 
   function renderTimeline(upcoming, payday, checking) {
@@ -1362,7 +1436,7 @@
     document.getElementById("lastVenmo").value = state.settle.lastVenmo || "";
   }
 
-  function onWorthChange() { save(); recomputeNetWorth(); }
+  function onWorthChange() { save(); recomputeNetWorth(); updateOneoffAfters(); }
 
   // ---------- render everything from current state ----------
   function renderAll() {
@@ -1401,7 +1475,7 @@
       renderOneoffs(); recompute();
     });
     document.getElementById("addCard").addEventListener("click", function () {
-      state.cards.push({ name: "", balance: "" }); renderAccounts("cards", state.cards, "Card name", onWorthChange); recompute();
+      state.cards.push({ name: "", balance: "", id: uid() }); renderAccounts("cards", state.cards, "Card name", onWorthChange); renderOneoffs(); recompute();
     });
     document.getElementById("addLoan").addEventListener("click", function () {
       state.loans.push({ name: "", balance: "" }); renderAccounts("loans", state.loans, "Loan name", onWorthChange); recompute();

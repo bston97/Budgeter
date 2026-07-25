@@ -7,6 +7,11 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.6.0] — 2026-07-24
+
+### Added
+- **Link a one-off payment to a credit card.** Each extra payment on the Runway tab now has an "Apply to" card picker that **auto-suggests** the right card from what you type (e.g. "Apple Card payment" → Apple Card), and you can override it. When linked, it shows a read-only **"→ [Card] after: $X"** preview of that card's balance once the payment lands. The preview updates live as you change the amount or the card's balance. (Credit cards now carry a hidden stable ID so links survive renames.)
+
 ## [1.5.0] — 2026-07-24
 
 ### Added
