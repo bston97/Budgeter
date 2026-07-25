@@ -561,16 +561,23 @@
               <span class="head-total tnum" id="payHead"></span>
             </div>
             <div class="card-body">
-              <p class="note-line" id="periodNote">Paid the 15th and last day of the month — your check tracks the weekdays in each period.</p>
+              <p class="note-line" id="periodNote">Paid the 15th and last day of the month.</p>
               <div class="pay-grid">
                 <div class="pay-field">
+                  <label for="payMode">Pay type</label>
+                  <select id="payMode">
+                    <option value="hourly">Hourly</option>
+                    <option value="salary">Salaried</option>
+                  </select>
+                </div>
+                <div class="pay-field" id="rateField">
                   <label for="payRate">Rate</label>
                   <div class="money-input">
                     <span class="cur">$</span>
                     <input type="text" inputmode="decimal" id="payRate" placeholder="0.00" />
                   </div>
                 </div>
-                <div class="pay-field">
+                <div class="pay-field" id="perField">
                   <label for="payPer">Per</label>
                   <select id="payPer">
                     <option value="hour">hour</option>
@@ -578,14 +585,35 @@
                   </select>
                 </div>
                 <div class="pay-field" id="hoursField">
-                  <label for="payHours">Hours / day</label>
+                  <label for="payHours">Hours</label>
                   <input type="text" inputmode="decimal" id="payHours" placeholder="8" />
+                </div>
+                <div class="pay-field" id="hoursUnitField">
+                  <label for="payHoursUnit">Per</label>
+                  <select id="payHoursUnit">
+                    <option value="day">day</option>
+                    <option value="week">week</option>
+                  </select>
+                </div>
+                <div class="pay-field" id="salaryField" hidden>
+                  <label for="paySalary">Annual salary</label>
+                  <div class="money-input">
+                    <span class="cur">$</span>
+                    <input type="text" inputmode="decimal" id="paySalary" placeholder="0" />
+                  </div>
+                </div>
+                <div class="pay-field" id="netCheckField" hidden>
+                  <label for="payNetCheck">Take-home / check</label>
+                  <div class="money-input">
+                    <span class="cur">$</span>
+                    <input type="text" inputmode="decimal" id="payNetCheck" placeholder="exact" />
+                  </div>
                 </div>
                 <div class="pay-field">
                   <label for="payTakeHome">Take-home %</label>
                   <input type="text" inputmode="decimal" id="payTakeHome" placeholder="100" />
                 </div>
-                <div class="pay-field">
+                <div class="pay-field" id="daysOffField">
                   <label for="payDaysOff">Days off</label>
                   <input type="text" inputmode="decimal" id="payDaysOff" placeholder="0" />
                 </div>
@@ -899,7 +927,7 @@
       creditScore: "",
       creditDate: "",
       oneoffs: [],
-      pay: { rate: "", per: "hour", hours: "8", takeHome: "100", daysOff: "" },
+      pay: { mode: "hourly", rate: "", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "", salary: "", netCheck: "" },
       nwHistory: [],
       cards: [{ name: "Visa", balance: "" }],
       bills: [
@@ -940,10 +968,12 @@
     if (typeof s.creditDate !== "string") s.creditDate = s.creditDate != null ? String(s.creditDate) : "";
     if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
     if (!s.pay || typeof s.pay !== "object") s.pay = {};
-    ["rate", "per", "hours", "takeHome", "daysOff"].forEach(function (k) {
+    ["mode", "rate", "per", "hours", "hoursUnit", "takeHome", "daysOff", "salary", "netCheck"].forEach(function (k) {
       if (typeof s.pay[k] !== "string") s.pay[k] = s.pay[k] != null ? String(s.pay[k]) : "";
     });
+    if (s.pay.mode !== "hourly" && s.pay.mode !== "salary") s.pay.mode = "hourly";
     if (s.pay.per !== "hour" && s.pay.per !== "day") s.pay.per = "hour";
+    if (s.pay.hoursUnit !== "day" && s.pay.hoursUnit !== "week") s.pay.hoursUnit = "day";
     if (!Array.isArray(s.nwHistory)) s.nwHistory = [];
     return s;
   }
@@ -1066,19 +1096,36 @@
     return n;
   }
   // Projected take-home for the period ending on `payday`, based on weekdays actually worked.
+  var PERIODS_PER_YEAR = 24; // semi-monthly: the 15th and the last day
   function projectedCheck(payday) {
     var p = state.pay;
+    var weekdays = countWeekdays(payPeriodStart(payday), payday);
+    var takeHome = p.takeHome === "" ? 100 : Math.max(0, Math.min(100, num(p.takeHome)));
+
+    if (p.mode === "salary") {
+      // Salaried semi-monthly pay is the same every period — weekday count doesn't change it.
+      var exact = Math.max(0, num(p.netCheck));
+      if (exact > 0) return { mode: "salary", exact: true, weekdays: weekdays, gross: exact, net: exact };
+      var salary = Math.max(0, num(p.salary));
+      if (salary <= 0) return null;
+      var grossCheck = salary / PERIODS_PER_YEAR;
+      return { mode: "salary", exact: false, weekdays: weekdays, gross: grossCheck, net: grossCheck * (takeHome / 100) };
+    }
+
     var rate = Math.max(0, num(p.rate));
     if (rate <= 0) return null;
-    var weekdays = countWeekdays(payPeriodStart(payday), payday);
     // days off can only remove days you'd actually work
     var worked = weekdays - Math.min(weekdays, Math.max(0, num(p.daysOff)));
-    var hours = p.hours === "" ? 8 : Math.max(0, num(p.hours)); // blank falls back to the placeholder
-    var perDayPay = p.per === "day" ? rate : rate * hours;
-    var takeHome = p.takeHome === "" ? 100 : Math.max(0, Math.min(100, num(p.takeHome)));
+    var perWeek = p.hoursUnit === "week";
+    var hours = p.hours === "" ? (perWeek ? 40 : 8) : Math.max(0, num(p.hours)); // blank falls back to the placeholder
+    var hoursPerWeekday = perWeek ? hours / 5 : hours; // a work week is 5 weekdays
+    var perDayPay = p.per === "day" ? rate : rate * hoursPerWeekday;
     return {
+      mode: "hourly",
       weekdays: weekdays,
       worked: worked,
+      hoursPerWeekday: hoursPerWeekday,
+      totalHours: worked * hoursPerWeekday,
       gross: worked * perDayPay,
       net: worked * perDayPay * (takeHome / 100)
     };
@@ -1435,26 +1482,52 @@
   }
 
   function renderPaycheck(payday, available) {
+    var salaried = state.pay.mode === "salary";
+    // show only the fields that belong to the selected pay type
+    ["rateField", "perField", "daysOffField"].forEach(function (id) {
+      document.getElementById(id).hidden = salaried;
+    });
+    var flatWeekdayRate = state.pay.per === "day"; // a flat per-weekday rate needs no hours figure
+    document.getElementById("hoursField").hidden = salaried || flatWeekdayRate;
+    document.getElementById("hoursUnitField").hidden = salaried || flatWeekdayRate;
+    document.getElementById("salaryField").hidden = !salaried;
+    document.getElementById("netCheckField").hidden = !salaried;
+
     var check = projectedCheck(payday);
     var start = payPeriodStart(payday);
     var weekdays = countWeekdays(start, payday);
-    setText("weekdayCount", String(weekdays));
-    setText("weekdayLabel", "Weekdays " + fmtShort(dateToISO(start)) + " – " + fmtShort(dateToISO(payday)));
+    var periodTxt = fmtShort(dateToISO(start)) + " – " + fmtShort(dateToISO(payday));
+
+    setText("periodNote", salaried
+      ? "Paid the 15th and last day — 24 checks a year, the same each period."
+      : "Paid the 15th and last day — your check tracks the weekdays in each period.");
 
     var head = document.getElementById("payHead");
     var cm = document.getElementById("checkMetric");
     var am = document.getElementById("afterPayMetric");
+
     if (!check) {
+      setText("weekdayLabel", salaried ? "Pay period" : "Weekdays " + periodTxt);
+      setText("weekdayCount", salaried ? periodTxt : String(weekdays));
       head.textContent = ""; head.className = "head-total tnum";
       cm.hidden = true; am.hidden = true;
       return;
     }
+
+    if (salaried) {
+      setText("weekdayLabel", check.exact ? "Take-home per check" : "Gross per check (salary ÷ 24)");
+      setText("weekdayCount", money(check.gross));
+    } else {
+      var hrs = Math.round(check.totalHours * 100) / 100;
+      var days = check.worked === weekdays ? String(weekdays) : check.worked + " of " + weekdays;
+      setText("weekdayLabel", "Weekdays " + periodTxt);
+      setText("weekdayCount", days + " · " + hrs + " hrs");
+    }
+
     head.textContent = money(check.net); head.className = "head-total pay tnum";
     cm.hidden = false; am.hidden = false;
     setText("estCheck", money(check.net));
     setText("afterPay", money(available + check.net));
-    var days = check.worked === weekdays ? String(weekdays) : check.worked + " of " + weekdays;
-    setText("weekdayCount", days);
   }
 
   function renderTimeline(upcoming, payday, checking) {
@@ -1872,12 +1945,16 @@
     document.getElementById("checking").value = state.checking || "";
     document.getElementById("creditInput").value = state.creditScore || "";
     document.getElementById("creditDate").value = state.creditDate || "";
+    document.getElementById("payMode").value = state.pay.mode || "hourly";
     document.getElementById("payRate").value = state.pay.rate || "";
     document.getElementById("payPer").value = state.pay.per || "hour";
     document.getElementById("payHours").value = state.pay.hours || "";
+    document.getElementById("payHoursUnit").value = state.pay.hoursUnit || "day";
+    document.getElementById("payHours").placeholder = state.pay.hoursUnit === "week" ? "40" : "8";
+    document.getElementById("paySalary").value = state.pay.salary || "";
+    document.getElementById("payNetCheck").value = state.pay.netCheck || "";
     document.getElementById("payTakeHome").value = state.pay.takeHome || "";
     document.getElementById("payDaysOff").value = state.pay.daysOff || "";
-    document.getElementById("hoursField").hidden = state.pay.per === "day";
     renderBills();
     renderOneoffs();
     renderAccounts("cards", state.cards, "Card name", onWorthChange);
@@ -1948,8 +2025,10 @@
         S().history = []; saveSettle(); renderSettleHistory();
       }
     });
-    var PAY_KEYS = { payRate: "rate", payHours: "hours", payTakeHome: "takeHome", payDaysOff: "daysOff" };
-    var PAY_BOUNDS = { payRate: [0, null], payHours: [0, 24], payTakeHome: [0, 100], payDaysOff: [0, null] };
+    var PAY_KEYS = { payRate: "rate", payHours: "hours", payTakeHome: "takeHome", payDaysOff: "daysOff",
+                     paySalary: "salary", payNetCheck: "netCheck" };
+    var PAY_BOUNDS = { payRate: [0, null], payHours: [0, 168], payTakeHome: [0, 100], payDaysOff: [0, null],
+                       paySalary: [0, null], payNetCheck: [0, null] };
     Object.keys(PAY_KEYS).forEach(function (id) {
       var elx = document.getElementById(id);
       elx.addEventListener("input", function () {
@@ -1969,8 +2048,15 @@
       });
     });
     document.getElementById("payPer").addEventListener("change", function () {
-      state.pay.per = this.value;
-      document.getElementById("hoursField").hidden = this.value === "day";
+      state.pay.per = this.value; recompute(); // renderPaycheck owns which fields show
+    });
+    document.getElementById("payHoursUnit").addEventListener("change", function () {
+      state.pay.hoursUnit = this.value;
+      document.getElementById("payHours").placeholder = this.value === "week" ? "40" : "8";
+      recompute();
+    });
+    document.getElementById("payMode").addEventListener("change", function () {
+      state.pay.mode = this.value;
       recompute();
     });
     document.getElementById("nameA").addEventListener("input", function () {

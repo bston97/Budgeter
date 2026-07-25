@@ -7,6 +7,12 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.9.0] — 2026-07-25
+
+### Added
+- **Salaried and hourly pay types.** Salaried semi-monthly pay is the same every check (annual ÷ 24) and does *not* vary with weekdays, so it now has its own mode: enter your annual salary with a take-home %, or just enter your exact **take-home per check** off a pay stub — which is both simpler and more accurate than estimating taxes. Hourly keeps the weekday-based projection.
+- **Hours can be entered per week or per day.** Enter 40/week (or 37.5, etc.) and the app converts to a per-weekday figure across the period's weekdays. The period summary now also shows total hours, e.g. "12 · 96 hrs".
+
 ## [1.8.0] — 2026-07-24
 
 ### Added
