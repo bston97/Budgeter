@@ -954,7 +954,7 @@
       var row = el("div", "line-row");
       var name = el("input", null, { type: "text", placeholder: namePh });
       name.value = c.name;
-      name.addEventListener("input", function () { c.name = name.value; save(); if (boxId === "cards") updateOneoffAfters(); });
+      name.addEventListener("input", function () { c.name = name.value; save(); if (boxId === "cards") renderOneoffs(); });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
@@ -1001,8 +1001,9 @@
         if (num(amt.value) === num(focusVal)) return; // only stamp when the value actually changed
         if (type === "investment") c.prev = focusVal; // remember the value before this change for the trend arrow
         c.date = todayISO();
+        focusVal = amt.value; // reset baseline so a second blur without a change won't re-stamp
         save();
-        renderAssets();
+        renderStatus(); // update only this row's status cell (a full re-render would swallow a following click)
       });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
@@ -1016,27 +1017,32 @@
       sel.addEventListener("change", function () { c.type = sel.value; save(); renderAssets(); });
 
       var status = el("div", "as-status");
-      if (type === "report") {
-        var d = el("input", "as-of-date", { type: "date", title: "As-of date (optional)" });
-        d.value = c.date || "";
-        d.addEventListener("input", function () { c.date = d.value; save(); });
-        status.appendChild(d);
-      } else {
-        status.classList.add("auto");
-        if (type === "investment") status.classList.add("invest");
-        var dateSpan = el("span", "as-date-text");
-        dateSpan.textContent = c.date ? fmtShort(c.date) : "—";
-        status.appendChild(dateSpan);
-        if (type === "investment" && c.prev && c.balance !== "") {
-          var diff = num(c.balance) - num(c.prev);
-          if (diff !== 0) {
-            var arrow = el("span", "trend " + (diff > 0 ? "up" : "down"));
-            arrow.textContent = diff > 0 ? "▲" : "▼";
-            arrow.title = (diff > 0 ? "Up" : "Down") + " from " + fmtShort(c.date || "");
-            status.appendChild(arrow);
+      function renderStatus() {
+        status.innerHTML = "";
+        status.className = "as-status";
+        if (type === "report") {
+          var d = el("input", "as-of-date", { type: "date", title: "As-of date (optional)" });
+          d.value = c.date || "";
+          d.addEventListener("input", function () { c.date = d.value; save(); });
+          status.appendChild(d);
+        } else {
+          status.classList.add("auto");
+          if (type === "investment") status.classList.add("invest");
+          var dateSpan = el("span", "as-date-text");
+          dateSpan.textContent = c.date ? fmtShort(c.date) : "—";
+          status.appendChild(dateSpan);
+          if (type === "investment" && c.prev && c.balance !== "") {
+            var diff = num(c.balance) - num(c.prev);
+            if (diff !== 0) {
+              var arrow = el("span", "trend " + (diff > 0 ? "up" : "down"));
+              arrow.textContent = diff > 0 ? "▲" : "▼";
+              arrow.title = (diff > 0 ? "Up" : "Down") + " since last change";
+              status.appendChild(arrow);
+            }
           }
         }
       }
+      renderStatus();
 
       var del = el("button", "del as-del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
@@ -1095,20 +1101,35 @@
     });
   }
 
-  var oneoffUpdaters = [];
-  function updateOneoffAfters() { oneoffUpdaters.forEach(function (f) { f(); }); }
+  var oneoffRows = [];
+  // "balance after" per card, applying each linked payment in order so multiple payments to one card accumulate
+  function updateOneoffAfters() {
+    var running = {};
+    oneoffRows.forEach(function (r) {
+      var o = r.o, span = r.afterSpan;
+      var card = cardById(o.cardId);
+      if (!card || String(card.balance).trim() === "") { span.textContent = ""; span.className = "oneoff-after"; return; }
+      if (!(o.cardId in running)) running[o.cardId] = num(card.balance);
+      running[o.cardId] -= num(o.amount);
+      var after = running[o.cardId];
+      span.textContent = "→ " + (card.name || "card") + " after: " + money(after);
+      span.className = "oneoff-after" + (after < 0 ? " neg" : "");
+    });
+  }
   function cardById(id) {
     if (!id) return null;
     for (var i = 0; i < state.cards.length; i++) if (state.cards[i].id === id) return state.cards[i];
     return null;
   }
-  // best-guess a credit card from the payment description (longest card name that appears in the text)
+  // best-guess a credit card from the payment description: whole-word match on the card name (longest wins)
   function suggestCard(desc) {
-    var d = String(desc).toLowerCase();
+    var d = String(desc);
     var best = "", bestLen = 0;
     state.cards.forEach(function (c) {
-      var name = String(c.name).toLowerCase().trim();
-      if (name && d.indexOf(name) >= 0 && name.length > bestLen) { best = c.id; bestLen = name.length; }
+      var name = String(c.name).trim();
+      if (!name) return;
+      var re = new RegExp("\\b" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
+      if (re.test(d) && name.length > bestLen) { best = c.id; bestLen = name.length; }
     });
     return best;
   }
@@ -1116,27 +1137,16 @@
   function renderOneoffs() {
     var box = document.getElementById("oneoffs");
     box.innerHTML = "";
-    oneoffUpdaters = [];
+    oneoffRows = [];
     var namedCards = state.cards.filter(function (c) { return String(c.name).trim() !== ""; });
+    var linkCleaned = false;
 
     state.oneoffs.forEach(function (o, i) {
-      if (o.cardId && !cardById(o.cardId)) o.cardId = ""; // drop links to deleted cards
+      if (o.cardId && !cardById(o.cardId)) { o.cardId = ""; linkCleaned = true; } // drop links to deleted cards
 
       var wrap = el("div", "oneoff-item");
       var afterSpan = el("span", "oneoff-after");
       var cardSelect = null;
-
-      function updateAfter() {
-        var card = cardById(o.cardId);
-        if (card) {
-          var after = num(card.balance) - num(o.amount);
-          afterSpan.textContent = "→ " + (card.name || "card") + " after: " + money(after);
-          afterSpan.className = "oneoff-after" + (after < 0 ? " neg" : "");
-        } else {
-          afterSpan.textContent = "";
-          afterSpan.className = "oneoff-after";
-        }
-      }
 
       var row = el("div", "line-row");
       var desc = el("input", null, { type: "text", placeholder: "What for (e.g. Apple Card payment)" });
@@ -1175,16 +1185,18 @@
         });
         cardSelect.value = o.cardId || "";
         cardSelect.addEventListener("change", function () {
-          o.cardId = cardSelect.value; o.cardManual = true; updateAfter(); save();
+          o.cardId = cardSelect.value; o.cardManual = true; save(); updateOneoffAfters();
         });
         link.appendChild(lbl); link.appendChild(cardSelect); link.appendChild(afterSpan);
         wrap.appendChild(link);
       }
 
-      updateAfter();
-      oneoffUpdaters.push(updateAfter);
+      oneoffRows.push({ o: o, afterSpan: afterSpan });
       box.appendChild(wrap);
     });
+
+    updateOneoffAfters();
+    if (linkCleaned) save(); // persist any dropped stale links
   }
 
   // drop one-off payments once the pay period they were logged in has ended; returns true if any were removed
