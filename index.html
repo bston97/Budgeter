@@ -1063,12 +1063,14 @@
   // Projected take-home for the period ending on `payday`, based on weekdays actually worked.
   function projectedCheck(payday) {
     var p = state.pay;
-    var rate = num(p.rate);
+    var rate = Math.max(0, num(p.rate));
     if (rate <= 0) return null;
     var weekdays = countWeekdays(payPeriodStart(payday), payday);
-    var worked = Math.max(0, weekdays - num(p.daysOff));
-    var perDayPay = p.per === "day" ? rate : rate * (num(p.hours) || 0);
-    var takeHome = p.takeHome === "" ? 100 : num(p.takeHome);
+    // days off can only remove days you'd actually work
+    var worked = weekdays - Math.min(weekdays, Math.max(0, num(p.daysOff)));
+    var hours = p.hours === "" ? 8 : Math.max(0, num(p.hours)); // blank falls back to the placeholder
+    var perDayPay = p.per === "day" ? rate : rate * hours;
+    var takeHome = p.takeHome === "" ? 100 : Math.max(0, Math.min(100, num(p.takeHome)));
     return {
       weekdays: weekdays,
       worked: worked,
@@ -1642,7 +1644,7 @@
     sb.from("shared_settle").upsert({ id: SHARED_ID, data: sharedData, updated_at: new Date().toISOString() })
       .then(function (res) {
         if (res && res.error) onSharedFail();
-        else { sharedPending = false; setSync("saved"); }
+        else { sharedPending = false; setSync("saved"); flushRemoteSettle(); }
       })
       .catch(onSharedFail);
   }
@@ -1747,7 +1749,24 @@
   }
 
   // Live updates: push the other person's shared edits straight onto this screen.
-  var sharedChannel = null;
+  var sharedChannel = null, pendingRemote = null;
+  function editingSettle() {
+    var a = document.activeElement;
+    return !!(a && a.closest && a.closest("#panel-settle"));
+  }
+  function applyRemoteSettle(d) {
+    sharedData = normSettle(d);
+    applySettleMode();
+    setSync("saved");
+  }
+  // If a remote change lands while they're typing, hold it and apply once the field is released —
+  // dropping it outright would leave this screen silently stale.
+  function flushRemoteSettle() {
+    if (!pendingRemote || editingSettle() || sharedPending) return;
+    var d = pendingRemote;
+    pendingRemote = null;
+    applyRemoteSettle(d);
+  }
   function subscribeShared() {
     if (!sb || !sharedMode || sharedChannel || !sb.channel) return;
     try {
@@ -1755,15 +1774,11 @@
         .on("postgres_changes",
             { event: "*", schema: "public", table: "shared_settle", filter: "id=eq." + SHARED_ID },
             function (payload) {
-              if (sharedPending) return; // our own edit is mid-flight; don't fight it
               var d = payload && payload.new && payload.new.data;
               if (!d) return;
               if (JSON.stringify(d) === JSON.stringify(sharedData)) return; // echo of our own write
-              if (document.activeElement && document.activeElement.closest &&
-                  document.activeElement.closest("#panel-settle")) return; // don't yank a field being typed in
-              sharedData = normSettle(d);
-              applySettleMode();
-              setSync("saved");
+              if (sharedPending || editingSettle()) { pendingRemote = d; return; }
+              applyRemoteSettle(d);
             })
         .subscribe();
     } catch (e) { sharedChannel = null; }
@@ -1771,6 +1786,7 @@
   function unsubscribeShared() {
     if (sb && sharedChannel && sb.removeChannel) { try { sb.removeChannel(sharedChannel); } catch (e) {} }
     sharedChannel = null;
+    pendingRemote = null;
   }
 
   function renderLedger(boxId, arr) {
@@ -1923,10 +1939,24 @@
         S().history = []; saveSettle(); renderSettleHistory();
       }
     });
-    ["payRate", "payHours", "payTakeHome", "payDaysOff"].forEach(function (id) {
-      document.getElementById(id).addEventListener("input", function () {
-        state.pay[{ payRate: "rate", payHours: "hours", payTakeHome: "takeHome", payDaysOff: "daysOff" }[id]] = this.value;
+    var PAY_KEYS = { payRate: "rate", payHours: "hours", payTakeHome: "takeHome", payDaysOff: "daysOff" };
+    var PAY_BOUNDS = { payRate: [0, null], payHours: [0, 24], payTakeHome: [0, 100], payDaysOff: [0, null] };
+    Object.keys(PAY_KEYS).forEach(function (id) {
+      var elx = document.getElementById(id);
+      elx.addEventListener("input", function () {
+        state.pay[PAY_KEYS[id]] = this.value;
         recompute();
+      });
+      // show the clamped value once they leave the field, so the number on screen matches the math
+      elx.addEventListener("blur", function () {
+        if (this.value === "") return;
+        var v = num(this.value), b = PAY_BOUNDS[id];
+        var c = Math.max(b[0], b[1] === null ? v : Math.min(b[1], v));
+        if (c !== v || String(v) !== this.value) {
+          this.value = String(c);
+          state.pay[PAY_KEYS[id]] = this.value;
+          recompute();
+        }
       });
     });
     document.getElementById("payPer").addEventListener("change", function () {
@@ -2052,6 +2082,9 @@
       else if (document.visibilityState === "visible" && user && !pendingSave) { pullCloud(user); loadSharedSettle(); }
     });
     window.addEventListener("pagehide", flushPending);
+
+    // apply any shared change that arrived while a settle field had focus
+    document.addEventListener("focusout", function () { setTimeout(flushRemoteSettle, 0); });
   }
 
   // ---------- auth flow ----------
@@ -2214,6 +2247,13 @@
   }
 
   boot();
+
+  // offline shell + makes the app installable; skipped on file:// where it can't register
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
 })();
 </script>
 </body>

@@ -16,6 +16,11 @@ Live app: https://bston97.github.io/Budgeter/
 - **Net worth over time.** The app records one net-worth point per day and draws a sparkline on the Net worth tab with the total change since the first point (green up / red down).
 - **Installable as an app (PWA).** "Add to Home Screen" on your phone gives Runway its own icon and a full-screen, browser-chrome-free window. Adds a web manifest, icons, and theme colors.
 
+### Fixed
+- Paycheck inputs are now clamped to sane values: **take-home % can't exceed 100** (1000% was multiplying the check 10×), **days off can't go negative** (which inflated the check) **or exceed the weekdays in the period** (which drove it negative), and a **blank hours/day falls back to 8** instead of silently projecting $0. Out-of-range entries are corrected on screen when you leave the field.
+- A shared-ledger change arriving while you were typing in the Settle-up tab was **discarded**, leaving your screen quietly out of date. It's now held and applied the moment you leave the field (or once your own save finishes).
+- Added a service worker so the app is **actually installable on Android** and the shell **works offline** with your last-synced data. It's network-first, so a new deploy always wins; Supabase traffic is never cached, so live data is never served stale.
+
 ## [1.7.0] — 2026-07-24
 
 ### Added
