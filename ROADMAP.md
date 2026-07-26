@@ -5,6 +5,9 @@ companion to [CHANGELOG.md](CHANGELOG.md) — the changelog records what already
 this file records what's worth building. When something lands, it moves out of here and
 into the changelog under its release.
 
+For *what to build it on* — the structural work these items sit on top of, and the staged
+plan for getting there — see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 Entries are written the same way the changelog is: what the feature does for you, in
 plain terms, rather than a ticket description. Line references point at `index.html`
 (the whole app is that one file) and name the function alongside the number, so they stay
