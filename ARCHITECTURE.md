@@ -2,8 +2,13 @@
 
 Where Runway's code stands, where it should go, and why. This is the counterpart to
 [ROADMAP.md](ROADMAP.md) — the roadmap says *what* to build, this says *what to build it
-on*. Written from a full review of the app as of `5e7af41` (1.18.0), against the roadmap's
-full scope.
+on*. Written from a full review of the app at `5e7af41` (1.18.0) against the roadmap's full
+scope, and revised through 1.18.1.
+
+Code is referenced by function name, never by line number. The app is one file that moves
+by dozens of lines per commit — the 1.18.1 fix alone shifted most of this document's
+original references by 73–86 lines — so a searchable name is the only reference that stays
+true.
 
 The optimization target is unusual and worth stating plainly, because it drives every
 recommendation below: **this codebase's primary maintainer is an AI agent.** That is not
@@ -26,7 +31,7 @@ conventions a team would normally reach for.
 | No framework, no bundler, no dependency tree | Two independently-drifting sync stacks |
 
 The foundation is sound. What fails is that every roadmap item requires editing one
-3,058-line file in 8–12 scattered places, with no way to verify correctness except
+~3,140-line file in 8–12 scattered places, with no way to verify correctness except
 shipping to the user. The fix is **native ES modules** — `<script type="module">` works
 untranspiled in browsers and on GitHub Pages, so modularity costs no build step, no
 dependencies, and no change to how deploys work. Every quality worth protecting survives.
@@ -42,50 +47,74 @@ almost perfectly into two classes:
 
 **Date math** — days 29–31 not existing in every month (1.8.2), a loan due-day edit
 charging a payment mid-type (1.14.1), a projection clobbered before its reader ran
-(1.17.1). All of it lives in pure functions: `nextPayday()` (`index.html:1221`),
-`occurrenceInMonth()` (`:1293`), `mostRecentOccurrence()` (`:1302`),
-`projectedCheck()` (`:1416`). Every one shipped broken because nothing is importable, so
+(1.17.1). All of it lives in pure functions: `nextPayday()`,
+`occurrenceInMonth()`, `mostRecentOccurrence()`,
+`projectedCheck()`. Every one shipped broken because nothing is importable, so
 nothing could be pinned against February or a month end before you hit it.
 
 **Input clamping** — take-home of 1000% multiplying a paycheck tenfold (1.8.1), "05"
 becoming the 15th while typing (1.8.2). These recur because the clamp-on-blur pattern is
-**copy-pasted, not shared**. It exists four times: bills (`:1853`), cards (`:1520`), loans
-(`:1580`), and a separate `PAY_BOUNDS` approach for pay inputs (`:2730`). The 1.14.1 fix
-landed in **one of the three** due-day clones. Adding subscriptions invites a fifth copy.
+**copy-pasted, not shared**. It exists four times: once each in the bill, card, and loan
+due-day handlers — `var n = parseInt(due.value, 10)` appears verbatim in all three — plus a
+separate `PAY_BOUNDS` approach for the pay inputs. The 1.14.1 fix landed in **one of the
+three** due-day clones. Adding subscriptions invites a fifth copy.
 
 ### Duplication that has already drifted
 
-- **Dead code.** `renderAccounts()` (`:1475`) describes itself as the generic row renderer
+- **Dead code.** `renderAccounts()` describes itself as the generic row renderer
   for cards and loans. Neither uses it anymore; its only caller is its own delete handler.
   Nothing removed it, because in a file this size nothing notices.
-- **Two parallel sync stacks.** Private (`scheduleCloud`/`pushCloud`/`onSaveFail`,
-  `:1176`) and shared (`scheduleSharedSave`/`pushShared` + rev-id echo suppression,
-  `:2357`). The drift already bit once — 1.7.0 fixed "'will retry' never actually retried
-  on the shared path," a retry that existed on one stack and not its twin. It has since
-  drifted the other way; see the open race below.
-- **`todayISO()` (`:2327`) and `dateToISO()` (`:1396`)** are two implementations of the
-  same formatting.
-- The semi-monthly assumption is baked into **prose**, not just code: static copy at
-  `:677`, the footer at `:1042`, and two strings in `renderPaycheck()` (`:2091`). Pay-schedule
-  work has edit sites that can't be found by tracing function calls.
+- **Two parallel sync stacks.** Private (`scheduleCloud`/`pushCloud`/`onSaveFail`) and
+  shared (`scheduleSharedSave`/`pushShared`, plus rev-id echo suppression). The drift has
+  bitten twice in opposite directions: 1.7.0 fixed "'will retry' never actually retried on
+  the shared path," a retry that existed on one stack and not its twin, and 1.18.1 had to
+  port the rev ids and sequence guard back the other way. Two stacks, one behavior — every
+  fix has to be applied twice, and historically hasn't been.
+- **`todayISO()` and `dateToISO()`** are two implementations of the same formatting.
+- The semi-monthly assumption is baked into **prose**, not just code: the static
+  "Paid the 15th and last day of the month." above the paycheck block, "paydays are the
+  15th and last day of each month" in the footer, and two more strings inside
+  `renderPaycheck()`. Pay-schedule work has edit sites that can't be found by tracing
+  function calls — only by searching the copy.
 
 ### `recompute()` does five jobs in a load-bearing order
 
-`recompute()` (`:1944`) mutates state (four expiry passes), builds the projection, writes
+`recompute()` mutates state (four expiry passes), builds the projection, writes
 `state.projectedAfter` behind a pending-rollover guard, persists, then paints six regions.
 The 1.17.1 bug *was* that ordering being wrong, and the invariant protecting it exists
 only as a comment inside the function. Period history — the next roadmap item — has to
 thread a new read and write through the same minefield.
 
-### An open data-loss race on the private path
+### The data-loss race on the private path — fixed in 1.18.1, partly
 
-The shared path gained client rev ids in 1.15.2. **The private path never did.**
-`pushCloud()` (`:1183`) upserts unconditionally and `pullCloud()` (`:3002`) replaces state
-wholesale, guarded only by a `pendingSave` flag. Two devices open at once — a scenario the
-changelog actively advertises — can silently destroy each other's edits, and because the
-unit of storage is one JSON blob, the loss is total rather than per-field. This is the
-same race already fixed once, still open on the other side. It is a live bug, not a
-roadmap item.
+This review originally found it open: the shared path gained client rev ids in 1.15.2 and
+the private path never did, so `pushCloud()` upserted the whole blob unconditionally and
+whichever device saved last erased the other's work entirely.
+
+**1.18.1 fixed the clobber.** Every write now reads the server copy first and, if it moved
+since the last sync, merges the two per top-level section against the last-synced copy
+(`mergeRemote()`): sections only this device touched are kept, sections only the other
+touched are taken, and when both changed the same one the server wins. Comparison uses a
+key-sorted stringify (`canon()`) because jsonb reorders keys on the way out — the 1.15.2
+lesson. The sequence guard and rev ids were ported over at the same time.
+
+**What it did not fix, and is worth knowing:**
+
+- **The merge is per top-level section, not per field.** Two devices editing *different
+  bills* still resolves to one device's whole `bills` array. Finer granularity would mean
+  either per-item ids with their own merge, or splitting the blob — neither is warranted
+  yet, but the limit is real.
+- **`pullCloud()` still replaces state wholesale.** On the tab-return path it's guarded by
+  `!pendingSave`, but at sign-in it is unconditional, so a local edit that never reached
+  the server is discarded on next load. The merge machinery now exists to fix this; it just
+  isn't wired in there.
+- **Saving costs an extra round trip.** The pre-write check is a second request, which also
+  makes the `pagehide` flush less likely to complete than a single upsert was. A
+  conditional update filtered on `data->>_rev` would collapse it back to one request in the
+  happy path — deliberately not done yet, because that PostgREST filter is unproven here
+  and a silent failure in the save path is worse than a round trip.
+- **The private row has no realtime subscription**, unlike `shared_settle`. A second device
+  learns of changes only when it saves or when its tab regains visibility.
 
 ### Agent-specific hazards
 
@@ -93,7 +122,7 @@ roadmap item.
   handlers. The `$`-prefixed amount-input builder is written out seven times. Exact-match
   string edits genuinely risk landing on the wrong clone, and the context needed to
   disambiguate is itself duplicated.
-- **Context cost.** ~3,060 lines ≈ 30–35k tokens, and `recompute()` can't be safely edited
+- **Context cost.** ~3,140 lines ≈ 30–35k tokens, and `recompute()` can't be safely edited
   without also reading the renderers it orders and the mutators it triggers — effectively
   the whole script. Every task starts with a full-file read.
 
@@ -103,7 +132,8 @@ roadmap item.
 
 The roadmap's Subscriptions item, traced end to end.
 
-**Today — 11 edit sites spanning lines ~350 to ~2780:** CSS grid rules; a new HTML
+**Today — 11 edit sites spanning nearly the whole file, from the CSS block to the reset
+dialog near the end:** CSS grid rules; a new HTML
 section; `defaults()`; `migrate()`; a new recurrence function (start-date + interval —
 `occurrenceInPeriod()` only handles day-of-month and assumes monthly cadence); a
 `renderSubscriptions()` cloned from `renderBills()` (inheriting clamp copy #5); the
@@ -135,8 +165,8 @@ merged ISO helpers, `nextPayday`, `mostRecentPayday`, `currentPeriod`,
 `projectedCheck`. Switch the inline script to `type="module"` with one import.
 
 **One real code change:** `projectedCheck()` closes over global `state`. It becomes
-`projectedCheck(pay, payday)`, with `state.pay` passed at its call sites (`:2014`,
-`:2086`, `:2159`).
+`projectedCheck(pay, payday)`, with `state.pay` passed at its three call sites — one in
+`recompute()`, two in `renderPaycheck()`.
 
 Add `tests/core.test.mjs`. Update `sw.js` SHELL and bump `CACHE` — forgetting this breaks
 offline.
@@ -165,9 +195,12 @@ entirely in core.
 
 ### Step 4 — Unify the sync layer
 
-One channel abstraction — debounce, retry, flush-on-hide, rev-id echo suppression —
-instantiated twice, and **give the private path the rev ids it lacks**. Prerequisite for
-dynamic pairing, which would otherwise hand-clone a third copy.
+One channel abstraction — debounce, retry, flush-on-hide, rev-id echo suppression, conflict
+merge — instantiated twice instead of written twice. 1.18.1 brought the two paths closer in
+*behavior* but further apart in *code*, since the merge logic now exists only on the private
+side. Folding them together is the prerequisite for dynamic pairing, which would otherwise
+hand-clone a third copy. Fold in the leftovers from 1.18.1 here too: wire the merge into
+`pullCloud()` so a sign-in can't discard an unsaved edit, and revisit the extra round trip.
 
 ### Step 5 — Pairing backend, when that feature is scheduled
 
@@ -222,7 +255,7 @@ backstop, but it adds nothing an agent can't do locally in under a second.
 
 ## Backend
 
-### The private blob: keep it, with one fix
+### The private blob: keep it
 
 One JSONB row per user is **still right** for everything private on the roadmap — period
 history, subscriptions, variable spending, multiple accounts, settings. The state is tens
@@ -231,11 +264,14 @@ easiest policy in Postgres to get right. Normalizing would buy nothing and cost 
 migration per feature — at this release cadence, migration ceremony would be the
 bottleneck. `migrate()` + JSONB means a schema change is one function edit.
 
-The fix it needs is the rev-id race described above, not a different storage model.
+The one thing it genuinely needed was concurrency control, not a different storage model —
+and 1.18.1 supplied it. The blob's real cost is what that fix exposed: merge granularity
+can never be finer than a top-level section while the unit of storage is one record. That's
+an acceptable trade at this scale, and it's the thing to re-examine if it ever isn't.
 
 ### Dynamic pairing: the hardcoded row has to die
 
-`SHARED_ID = "household"` (`:2341`) with a hand-configured allowlist can't generalize. The
+`SHARED_ID = "household"` with a hand-configured allowlist can't generalize. The
 anon key and all client code are public, so **the trust boundary must be the database.**
 
 ```sql
@@ -272,8 +308,8 @@ create policy ledger_update on ledgers for update
 if `member_b is null` and the caller's email matches `invited_email`. That makes "nothing
 is shared until both said yes" a database fact rather than a UI decision.
 
-Client changes are mechanical: `loadSharedSettle()` (`:2391`), `pushShared()` (`:2374`),
-and the realtime filter (`:2509`) key off the ledger id instead of the constant. Realtime
+Client changes are mechanical: `loadSharedSettle()`, `pushShared()`,
+and the realtime filter key off the ledger id instead of the constant. Realtime
 `postgres_changes` respects RLS, so subscription eavesdropping is closed too. Verify the
 policies the only way that counts: a second real account attempting every operation it
 shouldn't be able to perform.
@@ -303,7 +339,7 @@ the least bug-prone layer while the actual bug record is entirely date math and 
 file — context fragments and cross-file hops replace scrolling. Target 8–12 modules of
 100–400 lines, one per domain concern.
 
-**Don't build a mini-framework.** Dead `renderAccounts()` (`:1475`) is the cautionary tale
+**Don't build a mini-framework.** Dead `renderAccounts()` is the cautionary tale
 already in this codebase: the "generic" abstraction was abandoned the moment sections
 diverged. Slightly repetitive imperative code per section module is safer to edit than one
 clever shared abstraction whose every change fans out everywhere. Deduplicate the *clamp
@@ -311,8 +347,8 @@ logic* — a ten-line helper — not the renderers.
 
 **Don't modernize ES5 syntax for its own sake.** Churn, no behavioral gain, real
 regression risk while there are no tests. Write new code in whatever style is clearest and
-leave working code alone. (The ES5 purity is already soft — `padStart` at `:1397` is
-ES2017.)
+leave working code alone. (The ES5 purity is already soft — `dateToISO()` uses `padStart`,
+which is ES2017.)
 
 ---
 
@@ -324,14 +360,14 @@ these go in it.
 
 1. **Never trigger a full section re-render from inside an input or click handler.** It
    swallows the next click and steals focus mid-typing. Update the one affected cell in
-   place. Four separate comments in the code record this the hard way (`:1683`, `:1753`,
-   `:1910`, `:2555`).
+   place. Four separate comments in the code record this the hard way — search for
+   "swallow", "eat the next click", and "steal focus".
 2. **A bill's paid flag and the checking balance move together.** Ticking debits checking;
-   unticking reverses it exactly. `setBillPaid()` (`:1343`) and `adjustChecking()`
-   (`:1338`) are a pair, and nothing enforces it.
+   unticking reverses it exactly. `setBillPaid()` and `adjustChecking()`
+ are a pair, and nothing enforces it.
 3. **Never overwrite `state.projectedAfter` while a rollover is pending acknowledgment.**
-   That was the 1.17.1 bug; the guard lives at `:2011`.
-4. **Every new state field needs a `migrate()` guard.** `migrate()` (`:1094`) is the
+   That was the 1.17.1 bug; the guard lives in `recompute()`, keyed off `pendingRollover()`.
+4. **Every new state field needs a `migrate()` guard.** `migrate()` is the
    schema. A field without a guard breaks every previously-saved state.
 5. **Every new file goes in `sw.js`'s SHELL list, with a `CACHE` version bump.** Otherwise
    offline silently serves a stale shell.

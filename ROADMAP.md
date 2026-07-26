@@ -9,9 +9,9 @@ For *what to build it on* — the structural work these items sit on top of, and
 plan for getting there — see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Entries are written the same way the changelog is: what the feature does for you, in
-plain terms, rather than a ticket description. Line references point at `index.html`
-(the whole app is that one file) and name the function alongside the number, so they stay
-findable as the file shifts.
+plain terms, rather than a ticket description. Code is referenced by function name rather
+than line number — the whole app is one file that shifts by dozens of lines per commit, so
+a name you can search for stays true and a number doesn't.
 
 Live app: https://bston97.github.io/Budgeter/
 
@@ -38,24 +38,24 @@ how long you use it.
 The good news: **both halves of the comparison already exist.** Nothing new has to be
 asked of you.
 
-- `state.projectedAfter` — written near the end of `recompute()` (`index.html:2012`) —
+- `state.projectedAfter` — written near the end of `recompute()` —
   already stores what the app expected your balance to be after a given payday, keyed by
   that payday's date. It was added for the rollover nudge in 1.17.0.
-- `ackRollover()` (`index.html:2049`) is the moment you confirm your *real* post-payday
+- `ackRollover()` is the moment you confirm your *real* post-payday
   bank balance. That's the actual.
 
 So the projected figure and the true figure meet in one place, on a date the app already
 tracks. The work is recording the pair and drawing it.
 
 **Shape.** A `periodHistory` array on state, one entry per payday, following the
-`nwHistory` precedent exactly (`recordNetWorth()`, `index.html:2246`): short keys,
+`nwHistory` precedent exactly (`recordNetWorth()`): short keys,
 appended rather than rewritten, capped in length so it can't grow without bound, and
 guarded in `migrate()` with an `Array.isArray` check so states saved before the feature
 existed load clean.
 
 **Display.** A block on the Runway tab listing the last several periods — projected,
 actual, and the difference — plus a sparkline of the delta over time, reusing the inline
-SVG approach in `renderNetWorthTrend()` (`index.html:2262`) rather than adding a charting
+SVG approach in `renderNetWorthTrend()` rather than adding a charting
 dependency. It stays hidden until there are at least two periods to compare, the same way
 `nwTrend` hides itself below two points; one lonely row isn't a trend and shouldn't look
 like one.
@@ -69,7 +69,7 @@ like one.
   recorded actual is what you confirmed at the time; a later correction shouldn't silently
   rewrite history, but it also shouldn't be stranded if you're fixing a typo.
 - First run must stay retroactively silent. `migrate()` already seeds `rolloverSeen` to
-  the most recent payday (`index.html:1149`) so a brand-new setup is never questioned
+  the most recent payday so a brand-new setup is never questioned
   about a payday it wasn't around for — period history has to respect the same rule and
   not backfill entries it never observed.
 
@@ -99,27 +99,27 @@ Each subscription should carry a name, an amount, a **start date**, and a **time
 (monthly, quarterly, semi-annual, annual — and whatever else earns its place), so the app
 can resolve the next occurrence from the date rather than from a day-of-month alone. Once
 that resolves to a date, the rest is existing machinery: `occurrenceInPeriod()`
-(`index.html:1257`) to decide whether it falls in this window, the timeline and available
+ to decide whether it falls in this window, the timeline and available
 -cash treatment bills already get, and the paid-tick behavior from `setBillPaid()`
-(`index.html:1343`) so an annual charge can be ticked off like anything else.
+ so an annual charge can be ticked off like anything else.
 
 **Variable / discretionary spending.** Bills, debt payments, and one-off entries are all
 modeled, but there's no place for groceries, gas, or eating out. That means "available"
 is really "cash before you spend anything on living," which is optimistic in a way that
 matters. The default bill list currently smuggles Groceries in as a fixed monthly bill
-(`index.html:1083`) — that's a workaround standing in for a real model, not the answer.
+ — that's a workaround standing in for a real model, not the answer.
 
-**Pay schedules other than semi-monthly.** `nextPayday()` (`index.html:1221`) hardcodes
+**Pay schedules other than semi-monthly.** `nextPayday()` hardcodes
 the 15th and the last day of the month. Weekly and biweekly pay can't be expressed at all,
 and biweekly is the most common schedule there is — anyone on it can't use the app.
 
 This is the largest item on the board and should be treated as such. The semi-monthly
 assumption isn't in one function; it's the foundation everything else sits on.
-`mostRecentPayday()` (`index.html:1235`) and `currentPeriod()` (`index.html:1249`) both
-enumerate the same two dates. `occurrenceInPeriod()` (`index.html:1257`) relies on periods
+`mostRecentPayday()` and `currentPeriod()` both
+enumerate the same two dates. `occurrenceInPeriod()` relies on periods
 being ≤16 days to guarantee at most one occurrence per window — a monthly bill in a weekly
 period breaks that assumption outright. The weekday-counting projection in
-`projectedCheck()` (`index.html:1416`) is built around a semi-monthly period's 10–12
+`projectedCheck()` is built around a semi-monthly period's 10–12
 weekdays, and the rollover nudge keys off `mostRecentPayday()` too. Generalizing the
 schedule means revisiting all of it, so it deserves a real design pass before anyone
 starts.
@@ -133,23 +133,22 @@ you're aiming at. "$3,000 for the car repair by March" is a different question f
 "what's my savings balance," and the app can't answer it.
 
 **A settings page.** Everything that configures the app is scattered across the edges of
-the screen. The theme toggle, "Set password," and "Sign out" live in the header
-(`index.html:601`), the password panel expands inline underneath it (`index.html:612`),
-and "Reset all data" is buried in the footer next to a run-on sentence
-(`index.html:1043`). None of it belongs in the flow of a budgeting screen, and there's
-nowhere to put the next setting that comes along.
+the screen. The theme toggle, "Set password," and "Sign out" live in the header, the
+password panel expands inline underneath it, and "Reset all data" is buried in the footer
+next to a run-on sentence. None of it belongs in the flow of a budgeting screen, and
+there's nowhere to put the next setting that comes along.
 
 A proper settings view would collect what already exists — theme, password, sign out,
 clear data — and give a home to things that currently can't exist at all: **which tabs to
 show** (not everyone needs Settle up), the participant names that are currently editable
 only from inside the Settle-up tab, and whatever the items above turn out to need. Worth
 noting the tab strip hardcodes "you & Maria" as the Settle-up subtitle
-(`index.html:629`) even though those names have been user-editable since 1.7.0 — a
+ even though those names have been user-editable since 1.7.0 — a
 settings page is the natural place to fix that properly.
 
 **First-run setup.** A brand-new account opens onto someone else's budget: Rent $1,200,
 Car payment $340, Electric $95, Phone $70, Internet $60, Groceries $400, plus a "Visa,"
-a "Car loan," and Robinhood/401(k)/Savings — all from `defaults()` (`index.html:1077`).
+a "Car loan," and Robinhood/401(k)/Savings — all from `defaults()`.
 Every one has to be found and deleted before the app tells you the truth, and until then
 the headline number on the Runway tab is fiction. Placeholder rows are a reasonable way
 to show the shape of the thing, but they shouldn't be indistinguishable from real data.
@@ -160,8 +159,7 @@ plus a spending account you actually pay from, can't be represented — you have
 them in your head and enter the total, which then can't be reconciled against either bank.
 
 **Undo on delete.** Every `×` button deletes immediately and permanently —
-`state.bills.splice(i, 1)` (`index.html:1881`), and the same one-liner for cards
-(`index.html:1545`), loans (`index.html:1612`), assets (`index.html:1801`), and one-off
+`state.bills.splice(i, 1)`, and the same one-liner for cards, loans, assets, and one-off
 entries. There's no confirmation and nothing to undo it with; confirmations exist only for
 settling up, clearing settle-up history, and the full data reset. On a phone that `×` is a
 small target sitting right beside an amount field, and deleting a card takes its due date,
@@ -177,7 +175,7 @@ unless you open it.
 
 **Shared ledgers for any two people.** The Settle-up tab is shared between exactly two
 accounts today, and it works — but it only works *once*. `SHARED_ID` is the hardcoded
-string `"household"` (`index.html:2341`), so there is a single shared ledger row in the
+string `"household"`, so there is a single shared ledger row in the
 entire app, kept private to the two accounts on a Supabase allowlist set up by hand. A
 third person who signs up can never pair with anyone. Any two other users wanting what you
 and Maria have would need someone to edit the database for them.
@@ -185,10 +183,9 @@ and Maria have would need someone to edit the database for them.
 Generalizing it means three pieces:
 
 - **Identity.** A shared ledger keyed to the pair that owns it rather than to a constant,
-  so many can exist side by side. Everything downstream — `loadSharedSettle()`
-  (`index.html:2391`), `pushShared()` (`index.html:2366`), and the realtime subscription
-  filter in `subscribeShared()` (`index.html:2504`) — currently filters on `SHARED_ID` and
-  would key off the pair instead.
+  so many can exist side by side. Everything downstream — `loadSharedSettle()`,
+  `pushShared()`, and the realtime subscription filter in `subscribeShared()` — currently
+  filters on `SHARED_ID` and would key off the pair instead.
 - **Mutual confirmation.** One person invites, the other accepts, and nothing is shared
   until both have said yes. Until then the tab shows the pending state plainly — visible
   but not editable, blurred, with text explaining it can't be used until both sides
@@ -217,9 +214,10 @@ Pin them against known dates — month ends, February, EOM bills, a payday landi
 period boundary — and this whole class of bug stops reaching you.
 
 The obstacle is that the app is one HTML file with the logic inside a `<script>` tag and
-an IIFE, so nothing is importable and there's no test runner. Solving that without
-sacrificing the single-file property is a real design question, and a good thing to settle
-during the architecture review rather than by bolting on a framework.
+an IIFE, so nothing is importable and there's no test runner. [ARCHITECTURE.md](ARCHITECTURE.md)
+answers this: extract the pure functions into `js/core.js` as a native ES module and run
+`node --test` against it — no build step, no dependencies. It's Step 1 there, and the
+single highest-value change on the board.
 
 ---
 
