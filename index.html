@@ -7,13 +7,13 @@
 <meta name="theme-color" content="#2f7d5b" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#121815" media="(prefers-color-scheme: dark)" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-title" content="Runway" />
+<meta name="apple-mobile-web-app-title" content="Pincher" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
 <link rel="icon" href="favicon-64.png" sizes="64x64" type="image/png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<title>Runway — Budget &amp; Net Worth</title>
+<title>Penny Pincher — Budget &amp; Net Worth</title>
 <style>
   :root {
     --ground: #f6f8f5;
@@ -511,6 +511,34 @@
 
   .note-line { font-size: 12px; color: var(--ink-faint); margin: 2px 0 12px; }
 
+  /* Penny — the app explains itself in a voice rather than in system copy.
+     Layered onto whatever note class a section already uses, so only the colour
+     and the tag change; each section keeps its own spacing. */
+  .penny-say { color: var(--ink-soft); line-height: 1.5; }
+  .penny-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-weight: 700; color: var(--accent); white-space: nowrap;
+  }
+  .penny-tag::before {
+    content: ""; flex: none; width: 11px; height: 11px; border-radius: 50%;
+    background: var(--accent); box-shadow: inset 0 0 0 2px var(--surface);
+  }
+  .penny-tag::after { content: "·"; margin: 0 2px 0 4px; color: var(--ink-faint); }
+
+  /* Penny speaking up about something that just happened, rather than explaining a section. */
+  .penny-toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    max-width: calc(100vw - 32px); z-index: 70;
+    display: flex; align-items: center; gap: 0;
+    background: var(--surface); border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow); border-radius: 999px;
+    padding: 10px 16px; font-size: 13px; color: var(--ink);
+    animation: penny-in .28s cubic-bezier(.2,.8,.3,1);
+  }
+  .penny-toast.out { animation: penny-out .24s ease-in forwards; }
+  @keyframes penny-in  { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @keyframes penny-out { to { opacity: 0; transform: translate(-50%, 8px); } }
+
   /* Net worth composition bar */
   .compo { margin-top: 6px; }
   .compo .bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
@@ -610,7 +638,7 @@
 <div class="auth-screen" id="authScreen" style="display:none">
   <div class="auth-card">
     <img class="mark" src="mark.png" alt="" width="60" height="60" />
-    <h1>Runway</h1>
+    <h1>Penny Pincher</h1>
     <p>Sign in to load your budget on any device.</p>
     <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email" />
     <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password" />
@@ -631,8 +659,8 @@
       <div class="brand">
         <img class="mark" src="mark.png" alt="" width="34" height="34" />
         <div>
-          <h1>Runway</h1>
-          <p>Cash until your next check — and the bigger picture.</p>
+          <h1>Penny Pincher</h1>
+          <p>Every penny between you and your next check.</p>
         </div>
       </div>
       <div class="header-actions">
@@ -656,8 +684,8 @@
     </div>
 
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tab-runway" aria-selected="true" aria-controls="panel-runway" type="button">
-        Runway<span class="sub">money to next check</span>
+      <button class="tab" role="tab" id="tab-payday" aria-selected="true" aria-controls="panel-payday" type="button">
+        Payday<span class="sub">money to next check</span>
       </button>
       <button class="tab" role="tab" id="tab-networth" aria-selected="false" aria-controls="panel-networth" type="button">
         Net worth<span class="sub">debts &amp; assets</span>
@@ -667,8 +695,8 @@
       </button>
     </div>
 
-    <!-- ===================== RUNWAY PANEL ===================== -->
-    <div class="panel active" id="panel-runway" role="tabpanel" aria-labelledby="tab-runway">
+    <!-- ===================== PAYDAY PANEL ===================== -->
+    <div class="panel active" id="panel-payday" role="tabpanel" aria-labelledby="tab-payday">
       <div class="rollover" id="rollover" hidden>
         <div class="ro-main">
           <div class="ro-copy">
@@ -796,7 +824,7 @@
               <span class="head-total debt tnum" id="cardPayTotal"></span>
             </div>
             <div class="card-body">
-              <p class="note-line" id="cardPayNote">Give a credit card or loan a due day on the Net worth tab and it appears here. Card amounts are yours to fill in each cycle; loan payments are fixed and come off the loan balance once the date passes.</p>
+              <p class="note-line penny-say" id="cardPayNote"><span class="penny-tag">Penny</span>Give a card or loan a due day on the Net worth tab and it turns up here. Card amounts move around every month, so those are yours to fill in — loan payments are fixed, and I take them off the balance once the date passes.</p>
               <div id="cardPayments"></div>
             </div>
           </section>
@@ -804,7 +832,7 @@
           <section class="card">
             <div class="card-head"><h2>Extra money in &amp; out</h2></div>
             <div class="card-body">
-              <p class="note-line">Anything your checking balance doesn't already reflect — an ATM withdrawal, a check you deposited, a Venmo, cashback. Tap <strong>−/+</strong> to switch between money out and money in. Clears after payday.</p>
+              <p class="note-line penny-say"><span class="penny-tag">Penny</span>Anything your checking balance doesn't already know about — an ATM run, a check you deposited, a Venmo, cashback. Tap <strong>−/+</strong> to flip between money out and money in. I clear these once payday passes.</p>
               <div class="col-head oneoff-head"><span>What for</span><span class="r">In/out</span><span class="r">Amount</span><span></span></div>
               <div id="oneoffs"></div>
               <button class="add-btn" id="addOneoff" type="button">+ Add an entry</button>
@@ -931,7 +959,7 @@
               <span class="head-total asset tnum" id="assetsHead">$0.00</span>
             </div>
             <div class="card-body">
-              <p class="note-line">Robinhood, 401(k), savings, cash — anything you own.</p>
+              <p class="note-line penny-say"><span class="penny-tag">Penny</span>Robinhood, 401(k), savings, the cash in the drawer. If you own it, it counts.</p>
               <div class="col-head assets-head"><span>Account</span><span class="r">Value</span><span class="r">Type</span><span class="r">As of</span><span></span></div>
               <div id="assets"></div>
               <button class="add-btn" id="addAsset" type="button">+ Add asset</button>
@@ -966,7 +994,7 @@
               <span class="head-total debt tnum" id="loansHead">$0.00</span>
             </div>
             <div class="card-body">
-              <p class="note-line">Auto, student, personal, mortgage — remaining balance.</p>
+              <p class="note-line penny-say"><span class="penny-tag">Penny</span>Auto, student, personal, mortgage — whatever's still outstanding.</p>
               <div class="col-head loans-head"><span>Loan</span><span class="r">Balance</span><span class="r">Payment</span><span class="r">Due day</span><span></span></div>
               <div id="loans"></div>
               <button class="add-btn" id="addLoan" type="button">+ Add loan</button>
@@ -1022,7 +1050,7 @@
             <span class="amp">&amp;</span>
             <input type="text" id="nameB" placeholder="Their name" />
           </div>
-          <p class="settle-hint">Running tab? Add an entry called “Starting balance” on either side to carry over what’s already owed.</p>
+          <p class="settle-hint penny-say"><span class="penny-tag">Penny</span>Already owe each other from last time? Add a row called “Starting balance” on either side. I won’t tell anyone.</p>
         </div>
       </section>
 
@@ -1091,6 +1119,8 @@
   var SB_URL = "https://uobjmtunponfnxtigecv.supabase.co";
   var SB_KEY = "sb_publishable_N-QTntEMsoT5pbV_0bRW6A_lWn4wHhm";
   var APP_URL = "https://bston97.github.io/Budgeter/";
+  // Deliberately still "runway" — this is the localStorage key from before the rename.
+  // Changing it would orphan every existing cache and lose anything not yet synced.
   var KEY = "runway.budget.v1";
 
   var sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
@@ -1384,6 +1414,24 @@
     }
     document.body.appendChild(wrap);
     setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 1100);
+  }
+  // Penny reacting to something that just happened. Not gated on reduced motion — the
+  // words are the point; only the sliding is decoration, and the CSS handles that.
+  var pennyTimer = null;
+  function pennySay(text) {
+    var old = document.getElementById("pennyToast");
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    clearTimeout(pennyTimer);
+    var box = el("div", "penny-toast", { id: "pennyToast", role: "status" });
+    var tag = el("span", "penny-tag");
+    tag.textContent = "Penny";
+    box.appendChild(tag);
+    box.appendChild(document.createTextNode(text));
+    document.body.appendChild(box);
+    pennyTimer = setTimeout(function () {
+      box.classList.add("out");
+      setTimeout(function () { if (box.parentNode) box.parentNode.removeChild(box); }, 260);
+    }, 3400);
   }
   // True when every bill actually due this period has been ticked off.
   function allBillsClear() {
@@ -1685,7 +1733,7 @@
     });
   }
 
-  // Credit cards: name, balance, and a payment due day that drives the Runway card-payments section.
+  // Credit cards: name, balance, and a payment due day that drives the Payday tab's debt-payments section.
   function renderCards() {
     var box = document.getElementById("cards");
     box.innerHTML = "";
@@ -1815,7 +1863,7 @@
     markNewRow(box);
   }
 
-  // Runway: one row per card that has a due day. Amount is yours to fill in each cycle.
+  // Payday tab: one row per card that has a due day. Amount is yours to fill in each cycle.
   var cardPayRows = [];
   function renderCardPayments() {
     var box = document.getElementById("cardPayments");
@@ -2040,11 +2088,16 @@
         setBillPaid(b, occIso, nowPaid);
         refreshPaidBox();
         recompute();
-        if (!nowPaid || reducedMotion()) return;
-        paidBox.classList.remove("pop");
-        void paidBox.offsetWidth; // restart the animation if they tick two in a row
-        paidBox.classList.add("pop");
-        if (allBillsClear()) celebrate(paidBox); // that was the last one due this period
+        if (!nowPaid) return;
+        if (!reducedMotion()) {
+          paidBox.classList.remove("pop");
+          void paidBox.offsetWidth; // restart the animation if they tick two in a row
+          paidBox.classList.add("pop");
+        }
+        if (allBillsClear()) { // that was the last one due this period
+          celebrate(paidBox);  // no-ops under reduced motion; the words below don't
+          pennySay("Every bill this period, paid. Look at you.");
+        }
       });
       row.appendChild(paidBox);
 
@@ -2165,7 +2218,7 @@
 
   function sumBalances(arr) { return arr.reduce(function (s, c) { return s + num(c.balance); }, 0); }
 
-  // ---------- Runway computation ----------
+  // ---------- Payday tab computation ----------
   function recompute() {
     if (clearOldOneoffs()) renderOneoffs(); // expire one-offs if a payday passed while the app stayed open
     if (clearOldCardPayments()) renderCardPayments(); // same for card payments whose due date has passed
