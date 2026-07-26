@@ -11,7 +11,7 @@ Live app: https://bston97.github.io/Budgeter/
 ## [1.19.0] — 2026-07-26
 
 ### Changed
-- **Runway is now Penny Pincher.** The old name described the number; the new one describes the person using it — which suits a duct-taped wallet a lot better. On your home screen the icon reads **Pincher**, since "Penny Pincher" is too long to fit and Penny is now someone else's name (below). The first tab, previously also called "Runway" and confusingly sharing the app's name, is now simply **Payday**.
+- **Runway is now Penny Pincher.** The old name described the number; the new one describes the person using it — which suits a duct-taped wallet a lot better. It's Penny Pincher everywhere, including under the icon on your home screen, where iOS may shorten it to fit. The first tab, previously also called "Runway" and confusingly sharing the app's name, is now simply **Payday**.
 
   Nothing about your data moves. Your saved budget, your settle-up ledger with Maria, and your sign-in are all untouched.
 
