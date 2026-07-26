@@ -7,6 +7,18 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.19.0] — 2026-07-26
+
+### Added
+- **The numbers roll instead of snapping.** Your available cash and net worth count up (or down) to their new value over about four tenths of a second, so a change reads as movement rather than a figure blinking into something else. It's deliberately skipped while you're typing in a field — when you're entering your balance the number has to keep up with the keystroke, not lag behind it.
+- **Ticking a bill paid feels like something.** The checkbox pops when you mark a bill paid, and the row eases into its struck-through state instead of switching instantly. Tick the **last** bill due this pay period and you get a small burst of confetti — you cleared the period, which is worth half a second of acknowledgement.
+- **Rows arrive and leave.** Adding a bill, card, loan, asset, or entry slides the new row in, and deleting one lets it fade out before the list closes up, instead of everything jumping.
+
+All of it honors your system's **reduce motion** setting: switch that on and every animation is skipped, with the app behaving identically otherwise.
+
+### Fixed
+- **Deleting a row now removes the row you clicked.** Deletes were by position in the list, which was fine when the list couldn't change underneath them — with rows now animating out, they're matched by identity instead, so the right one always goes.
+
 ## [1.18.1] — 2026-07-26
 
 ### Fixed
