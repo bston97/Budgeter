@@ -8,6 +8,12 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.19.1] — 2026-07-26
+
+### Fixed
+- **Typing could go nowhere after another device saved.** When a change arrived from your other device, the app rebuilt its copy of your budget from the cloud — and the rows already on screen were still wired to the old copy. The rewiring was held back while you were typing, but moving straight from one field to the next never counted as stopping, so it never happened. Type into a section you hadn't already touched and the keystrokes went into the void: nothing saved, nothing said. Rows now stay wired when nothing about their section actually changed, and if a section genuinely did change, clicking into it rebuilds first.
+- **Saves fired when there was nothing to save.** Hiding the tab, closing it, or reconnecting kicked off a full save every time, whether or not anything had changed. Each of those stamps the record as updated, so your *other* device would see a change that wasn't one and redraw itself for nothing. Both now check that something is actually pending first.
+
 ## [1.19.0] — 2026-07-26
 
 ### Changed
