@@ -1,7 +1,7 @@
 {
-  "name": "Runway — Budget & Net Worth",
-  "short_name": "Runway",
-  "description": "How much is really yours until the next paycheck.",
+  "name": "Penny Pincher — Budget & Net Worth",
+  "short_name": "Budgeter",
+  "description": "Every penny between you and your next check.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

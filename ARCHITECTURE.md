@@ -1,6 +1,6 @@
 # Architecture
 
-Where Runway's code stands, where it should go, and why. This is the counterpart to
+Where Penny Pincher's code stands, where it should go, and why. This is the counterpart to
 [ROADMAP.md](ROADMAP.md) — the roadmap says *what* to build, this says *what to build it
 on*. Written from a full review of the app at `5e7af41` (1.18.0) against the roadmap's full
 scope, and revised through 1.18.1.

@@ -1,11 +1,30 @@
 # Changelog
 
-Notable changes to **Runway** (the Budgeter web app), grouped by feature release. Smaller
+Notable changes to **Penny Pincher** (the Budgeter web app, called Runway up to 1.18.1),
+grouped by feature release. Smaller
 patch fixes are summarized within the release they shipped under rather than listed separately.
 Versions follow [Semantic Versioning](https://semver.org/): the middle number is a feature
 release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
+
+## [1.19.0] — 2026-07-26
+
+### Changed
+- **Runway is now Penny Pincher.** The old name described the number; the new one describes the person using it — which suits a duct-taped wallet a lot better. It's Penny Pincher everywhere in the app; the home-screen icon is labelled **Budgeter**, since the full name is wider than a phone gives an icon caption. The first tab, previously also called "Runway" and confusingly sharing the app's name, is now simply **Payday**.
+
+  Nothing about your data moves. Your saved budget, your settle-up ledger with Maria, and your sign-in are all untouched.
+
+### Added
+- **Meet Penny.** The app's explanations now come from someone rather than from nowhere. Wherever there's a hint — what belongs in Assets, how debt payments work, how to carry over a running tab in Settle up — it's Penny telling you, and she has a bit of a personality about it. She turns up when a section needs explaining and stays out of the way otherwise. She also speaks up when you clear every bill in a pay period.
+- **The numbers roll instead of snapping.** Your available cash and net worth count up (or down) to their new value over about four tenths of a second, so a change reads as movement rather than a figure blinking into something else. It's deliberately skipped while you're typing in a field — when you're entering your balance the number has to keep up with the keystroke, not lag behind it.
+- **Ticking a bill paid feels like something.** The checkbox pops when you mark a bill paid, and the row eases into its struck-through state instead of switching instantly. Tick the **last** bill due this pay period and you get a small burst of confetti — you cleared the period, which is worth half a second of acknowledgement.
+- **Rows arrive and leave.** Adding a bill, card, loan, asset, or entry slides the new row in, and deleting one lets it fade out before the list closes up, instead of everything jumping.
+
+All of it honors your system's **reduce motion** setting: switch that on and every animation is skipped, with the app behaving identically otherwise.
+
+### Fixed
+- **Deleting a row now removes the row you clicked.** Deletes were by position in the list, which was fine when the list couldn't change underneath them — with rows now animating out, they're matched by identity instead, so the right one always goes.
 
 ## [1.18.1] — 2026-07-26
 

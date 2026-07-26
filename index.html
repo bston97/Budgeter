@@ -7,13 +7,13 @@
 <meta name="theme-color" content="#2f7d5b" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#121815" media="(prefers-color-scheme: dark)" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-title" content="Runway" />
+<meta name="apple-mobile-web-app-title" content="Budgeter" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
 <link rel="icon" href="favicon-64.png" sizes="64x64" type="image/png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<title>Runway — Budget &amp; Net Worth</title>
+<title>Penny Pincher — Budget &amp; Net Worth</title>
 <style>
   :root {
     --ground: #f6f8f5;
@@ -267,6 +267,43 @@
   .tl-item.paid .tl-name, .tl-item.paid .tl-amt { color: var(--ink-faint); }
   .tl-item.paid .tl-amt { text-decoration: line-through; }
   .pill.paid { background: var(--accent-soft); color: var(--accent); }
+
+  /* --- motion: small moments, never in the way of the number --- */
+  .paid-box { transition: background-color .18s ease, border-color .18s ease, color .18s ease; }
+  .paid-box.pop { animation: paid-pop .32s cubic-bezier(.2,.8,.3,1.4); }
+  @keyframes paid-pop {
+    0%   { transform: scale(1); }
+    45%  { transform: scale(1.28); }
+    100% { transform: scale(1); }
+  }
+  .bills-row .amt input, .bills-row input[type="text"] { transition: color .22s ease; }
+
+  .row-in { animation: row-in .26s cubic-bezier(.2,.7,.3,1); }
+  @keyframes row-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .row-out { animation: row-out .16s ease-in forwards; pointer-events: none; }
+  @keyframes row-out {
+    to { opacity: 0; transform: translateX(12px); }
+  }
+
+  .confetti { position: fixed; z-index: 60; pointer-events: none; }
+  .confetti i {
+    position: absolute; width: 7px; height: 7px; border-radius: 2px; display: block;
+    animation: confetti-fly .82s cubic-bezier(.2,.7,.3,1) forwards;
+  }
+  @keyframes confetti-fly {
+    0%   { transform: translate(0,0) scale(.4) rotate(0deg); opacity: 1; }
+    70%  { opacity: 1; }
+    100% { transform: translate(var(--dx), calc(var(--dy) + 28px)) scale(1) rotate(220deg); opacity: 0; }
+  }
+
+  /* Anyone who asks for less motion gets none of it. */
+  @media (prefers-reduced-motion: reduce) {
+    .paid-box.pop, .row-in, .row-out, .confetti i { animation: none !important; }
+    .paid-box, .bills-row .amt input, .bills-row input[type="text"] { transition: none !important; }
+  }
   .due-cell { display: flex; gap: 4px; align-items: center; }
   .due-cell input { width: 44px; padding: 8px 4px; text-align: center; }
   .due-cell input:disabled { opacity: .4; }
@@ -474,6 +511,34 @@
 
   .note-line { font-size: 12px; color: var(--ink-faint); margin: 2px 0 12px; }
 
+  /* Penny — the app explains itself in a voice rather than in system copy.
+     Layered onto whatever note class a section already uses, so only the colour
+     and the tag change; each section keeps its own spacing. */
+  .penny-say { color: var(--ink-soft); line-height: 1.5; }
+  .penny-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-weight: 700; color: var(--accent); white-space: nowrap;
+  }
+  .penny-tag::before {
+    content: ""; flex: none; width: 11px; height: 11px; border-radius: 50%;
+    background: var(--accent); box-shadow: inset 0 0 0 2px var(--surface);
+  }
+  .penny-tag::after { content: "·"; margin: 0 2px 0 4px; color: var(--ink-faint); }
+
+  /* Penny speaking up about something that just happened, rather than explaining a section. */
+  .penny-toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    max-width: calc(100vw - 32px); z-index: 70;
+    display: flex; align-items: center; gap: 0;
+    background: var(--surface); border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow); border-radius: 999px;
+    padding: 10px 16px; font-size: 13px; color: var(--ink);
+    animation: penny-in .28s cubic-bezier(.2,.8,.3,1);
+  }
+  .penny-toast.out { animation: penny-out .24s ease-in forwards; }
+  @keyframes penny-in  { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @keyframes penny-out { to { opacity: 0; transform: translate(-50%, 8px); } }
+
   /* Net worth composition bar */
   .compo { margin-top: 6px; }
   .compo .bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
@@ -573,7 +638,7 @@
 <div class="auth-screen" id="authScreen" style="display:none">
   <div class="auth-card">
     <img class="mark" src="mark.png" alt="" width="60" height="60" />
-    <h1>Runway</h1>
+    <h1>Penny Pincher</h1>
     <p>Sign in to load your budget on any device.</p>
     <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email" />
     <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password" />
@@ -594,8 +659,8 @@
       <div class="brand">
         <img class="mark" src="mark.png" alt="" width="34" height="34" />
         <div>
-          <h1>Runway</h1>
-          <p>Cash until your next check — and the bigger picture.</p>
+          <h1>Penny Pincher</h1>
+          <p>Every penny between you and your next check.</p>
         </div>
       </div>
       <div class="header-actions">
@@ -619,8 +684,8 @@
     </div>
 
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tab-runway" aria-selected="true" aria-controls="panel-runway" type="button">
-        Runway<span class="sub">money to next check</span>
+      <button class="tab" role="tab" id="tab-payday" aria-selected="true" aria-controls="panel-payday" type="button">
+        Payday<span class="sub">money to next check</span>
       </button>
       <button class="tab" role="tab" id="tab-networth" aria-selected="false" aria-controls="panel-networth" type="button">
         Net worth<span class="sub">debts &amp; assets</span>
@@ -630,8 +695,8 @@
       </button>
     </div>
 
-    <!-- ===================== RUNWAY PANEL ===================== -->
-    <div class="panel active" id="panel-runway" role="tabpanel" aria-labelledby="tab-runway">
+    <!-- ===================== PAYDAY PANEL ===================== -->
+    <div class="panel active" id="panel-payday" role="tabpanel" aria-labelledby="tab-payday">
       <div class="rollover" id="rollover" hidden>
         <div class="ro-main">
           <div class="ro-copy">
@@ -759,7 +824,7 @@
               <span class="head-total debt tnum" id="cardPayTotal"></span>
             </div>
             <div class="card-body">
-              <p class="note-line" id="cardPayNote">Give a credit card or loan a due day on the Net worth tab and it appears here. Card amounts are yours to fill in each cycle; loan payments are fixed and come off the loan balance once the date passes.</p>
+              <p class="note-line penny-say" id="cardPayNote"><span class="penny-tag">Penny</span>Give a card or loan a due day on the Net worth tab and it turns up here. Card amounts move around every month, so those are yours to fill in — loan payments are fixed, and I take them off the balance once the date passes.</p>
               <div id="cardPayments"></div>
             </div>
           </section>
@@ -767,7 +832,7 @@
           <section class="card">
             <div class="card-head"><h2>Extra money in &amp; out</h2></div>
             <div class="card-body">
-              <p class="note-line">Anything your checking balance doesn't already reflect — an ATM withdrawal, a check you deposited, a Venmo, cashback. Tap <strong>−/+</strong> to switch between money out and money in. Clears after payday.</p>
+              <p class="note-line penny-say"><span class="penny-tag">Penny</span>Anything your checking balance doesn't already know about — an ATM run, a check you deposited, a Venmo, cashback. Tap <strong>−/+</strong> to flip between money out and money in. I clear these once payday passes.</p>
               <div class="col-head oneoff-head"><span>What for</span><span class="r">In/out</span><span class="r">Amount</span><span></span></div>
               <div id="oneoffs"></div>
               <button class="add-btn" id="addOneoff" type="button">+ Add an entry</button>
@@ -894,7 +959,7 @@
               <span class="head-total asset tnum" id="assetsHead">$0.00</span>
             </div>
             <div class="card-body">
-              <p class="note-line">Robinhood, 401(k), savings, cash — anything you own.</p>
+              <p class="note-line penny-say"><span class="penny-tag">Penny</span>Robinhood, 401(k), savings, the cash in the drawer. If you own it, it counts.</p>
               <div class="col-head assets-head"><span>Account</span><span class="r">Value</span><span class="r">Type</span><span class="r">As of</span><span></span></div>
               <div id="assets"></div>
               <button class="add-btn" id="addAsset" type="button">+ Add asset</button>
@@ -929,7 +994,7 @@
               <span class="head-total debt tnum" id="loansHead">$0.00</span>
             </div>
             <div class="card-body">
-              <p class="note-line">Auto, student, personal, mortgage — remaining balance.</p>
+              <p class="note-line penny-say"><span class="penny-tag">Penny</span>Auto, student, personal, mortgage — whatever's still outstanding.</p>
               <div class="col-head loans-head"><span>Loan</span><span class="r">Balance</span><span class="r">Payment</span><span class="r">Due day</span><span></span></div>
               <div id="loans"></div>
               <button class="add-btn" id="addLoan" type="button">+ Add loan</button>
@@ -985,7 +1050,7 @@
             <span class="amp">&amp;</span>
             <input type="text" id="nameB" placeholder="Their name" />
           </div>
-          <p class="settle-hint">Running tab? Add an entry called “Starting balance” on either side to carry over what’s already owed.</p>
+          <p class="settle-hint penny-say"><span class="penny-tag">Penny</span>Already owe each other from last time? Add a row called “Starting balance” on either side. I won’t tell anyone.</p>
         </div>
       </section>
 
@@ -1054,6 +1119,8 @@
   var SB_URL = "https://uobjmtunponfnxtigecv.supabase.co";
   var SB_KEY = "sb_publishable_N-QTntEMsoT5pbV_0bRW6A_lWn4wHhm";
   var APP_URL = "https://bston97.github.io/Budgeter/";
+  // Deliberately still "runway" — this is the localStorage key from before the rename.
+  // Changing it would orphan every existing cache and lose anything not yet synced.
   var KEY = "runway.budget.v1";
 
   var sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
@@ -1282,6 +1349,102 @@
   function num(v) {
     var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
+  }
+
+  // ---------- motion ----------
+  // Checked per call rather than cached: the OS setting can change while the app is open.
+  function reducedMotion() {
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+  // Roll a money figure to its new value. Skipped while a field has focus — when you're
+  // typing your balance the number has to track the keystroke, not lag 400ms behind it.
+  function setMoney(node, val) {
+    if (!node) return;
+    var from = typeof node.__mv === "number" ? node.__mv : null;
+    node.__mv = val;
+    if (node.__mraf) { cancelAnimationFrame(node.__mraf); node.__mraf = 0; }
+    if (from === null || reducedMotion() || isTyping() || Math.abs(val - from) < 0.01) {
+      node.textContent = money(val);
+      return;
+    }
+    var t0 = 0, dur = 420;
+    node.__mraf = requestAnimationFrame(function step(ts) {
+      if (!t0) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3); // easeOutCubic — quick off the mark, gentle landing
+      node.textContent = money(from + (val - from) * e);
+      if (p < 1) node.__mraf = requestAnimationFrame(step);
+      else { node.__mraf = 0; node.textContent = money(val); }
+    });
+  }
+  // Set just before a render that appends a row, so the new one can announce itself.
+  var pendingNewRow = false;
+  function flagNewRow() { pendingNewRow = true; }
+  function markNewRow(box) {
+    var was = pendingNewRow;
+    pendingNewRow = false;
+    if (!was || reducedMotion() || !box) return;
+    var last = box.lastElementChild;
+    if (last) last.classList.add("row-in");
+  }
+  // Let a deleted row leave before the list rebuilds. The caller splices by identity, not
+  // index, because the list can change during the animation.
+  function removeRow(row, done) {
+    if (reducedMotion() || !row) { done(); return; }
+    row.classList.add("row-out");
+    setTimeout(done, 160);
+  }
+  function celebrate(originEl) {
+    if (reducedMotion() || !originEl || !originEl.getBoundingClientRect) return;
+    var r = originEl.getBoundingClientRect();
+    if (!r.width && !r.height) return;
+    var wrap = el("div", "confetti");
+    wrap.style.left = (r.left + r.width / 2) + "px";
+    wrap.style.top = (r.top + r.height / 2) + "px";
+    var tones = ["var(--accent)", "var(--warn)", "var(--accent)", "var(--ink-soft)"];
+    for (var i = 0; i < 14; i++) {
+      var p = document.createElement("i");
+      var ang = (Math.PI * 2 * i) / 14 + Math.random() * 0.5;
+      var dist = 42 + Math.random() * 38;
+      p.style.setProperty("--dx", (Math.cos(ang) * dist).toFixed(1) + "px");
+      p.style.setProperty("--dy", (Math.sin(ang) * dist - 18).toFixed(1) + "px");
+      p.style.background = tones[i % tones.length];
+      p.style.animationDelay = Math.round(Math.random() * 60) + "ms";
+      wrap.appendChild(p);
+    }
+    document.body.appendChild(wrap);
+    setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 1100);
+  }
+  // Penny reacting to something that just happened. Not gated on reduced motion — the
+  // words are the point; only the sliding is decoration, and the CSS handles that.
+  var pennyTimer = null;
+  function pennySay(text) {
+    var old = document.getElementById("pennyToast");
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    clearTimeout(pennyTimer);
+    var box = el("div", "penny-toast", { id: "pennyToast", role: "status" });
+    var tag = el("span", "penny-tag");
+    tag.textContent = "Penny";
+    box.appendChild(tag);
+    box.appendChild(document.createTextNode(text));
+    document.body.appendChild(box);
+    pennyTimer = setTimeout(function () {
+      box.classList.add("out");
+      setTimeout(function () { if (box.parentNode) box.parentNode.removeChild(box); }, 260);
+    }, 3400);
+  }
+  // True when every bill actually due this period has been ticked off.
+  function allBillsClear() {
+    var period = currentPeriod(new Date());
+    var due = 0, paid = 0;
+    state.bills.forEach(function (b) {
+      if (!b.name && !num(b.amount)) return;
+      var occ = occurrenceInPeriod(b.due, period.start, period.end);
+      if (!occ) return;
+      due++;
+      if (b.paidFor === dateToISO(occ)) paid++;
+    });
+    return due > 0 && due === paid;
   }
   function money(n) {
     if (Math.abs(n) < 0.005) n = 0; // avoid rendering "-$0.00" from tiny rounding
@@ -1570,7 +1733,7 @@
     });
   }
 
-  // Credit cards: name, balance, and a payment due day that drives the Runway card-payments section.
+  // Credit cards: name, balance, and a payment due day that drives the Payday tab's debt-payments section.
   function renderCards() {
     var box = document.getElementById("cards");
     box.innerHTML = "";
@@ -1615,12 +1778,17 @@
       var del = el("button", "del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
       del.addEventListener("click", function () {
-        state.cards.splice(i, 1); renderCards(); onWorthChange(); renderOneoffs(); renderCardPayments(); recompute();
+        removeRow(row, function () {
+          var at = state.cards.indexOf(c);
+          if (at >= 0) state.cards.splice(at, 1);
+          renderCards(); onWorthChange(); renderOneoffs(); renderCardPayments(); recompute();
+        });
       });
 
       row.appendChild(name); row.appendChild(amtWrap); row.appendChild(dueWrap); row.appendChild(del);
       box.appendChild(row);
     });
+    markNewRow(box);
   }
 
   // Loans: fixed monthly payment on a due day; the payment comes off the balance once that date passes.
@@ -1682,15 +1850,20 @@
       var del = el("button", "del ln-del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
       del.addEventListener("click", function () {
-        state.loans.splice(i, 1); renderLoans(); onWorthChange(); renderCardPayments(); recompute();
+        removeRow(row, function () {
+          var at = state.loans.indexOf(l);
+          if (at >= 0) state.loans.splice(at, 1);
+          renderLoans(); onWorthChange(); renderCardPayments(); recompute();
+        });
       });
 
       row.appendChild(name); row.appendChild(balWrap); row.appendChild(payWrap); row.appendChild(dueWrap); row.appendChild(del);
       box.appendChild(row);
     });
+    markNewRow(box);
   }
 
-  // Runway: one row per card that has a due day. Amount is yours to fill in each cycle.
+  // Payday tab: one row per card that has a due day. Amount is yours to fill in each cycle.
   var cardPayRows = [];
   function renderCardPayments() {
     var box = document.getElementById("cardPayments");
@@ -1871,11 +2044,18 @@
 
       var del = el("button", "del as-del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
-      del.addEventListener("click", function () { state.assets.splice(i, 1); renderAssets(); recomputeNetWorth(); save(); });
+      del.addEventListener("click", function () {
+        removeRow(row, function () {
+          var at = state.assets.indexOf(c);
+          if (at >= 0) state.assets.splice(at, 1);
+          renderAssets(); recomputeNetWorth(); save();
+        });
+      });
 
       row.appendChild(name); row.appendChild(amtWrap); row.appendChild(sel); row.appendChild(status); row.appendChild(del);
       box.appendChild(row);
     });
+    markNewRow(box);
   }
 
   function renderBills() {
@@ -1904,9 +2084,20 @@
       }
       paidBox.addEventListener("click", function () {
         if (!occIso) return;
-        setBillPaid(b, occIso, !isPaid);
+        var nowPaid = !isPaid;
+        setBillPaid(b, occIso, nowPaid);
         refreshPaidBox();
         recompute();
+        if (!nowPaid) return;
+        if (!reducedMotion()) {
+          paidBox.classList.remove("pop");
+          void paidBox.offsetWidth; // restart the animation if they tick two in a row
+          paidBox.classList.add("pop");
+        }
+        if (allBillsClear()) { // that was the last one due this period
+          celebrate(paidBox);  // no-ops under reduced motion; the words below don't
+          pennySay("Every bill this period, paid. Look at you.");
+        }
       });
       row.appendChild(paidBox);
 
@@ -1951,12 +2142,19 @@
 
       var del = el("button", "del", { type: "button", "aria-label": "Remove bill" });
       del.innerHTML = "&times;";
-      del.addEventListener("click", function () { state.bills.splice(i, 1); renderBills(); recompute(); });
+      del.addEventListener("click", function () {
+        removeRow(row, function () {
+          var at = state.bills.indexOf(b);
+          if (at >= 0) state.bills.splice(at, 1);
+          renderBills(); recompute();
+        });
+      });
 
       row.appendChild(name); row.appendChild(amtWrap); row.appendChild(dueWrap); row.appendChild(del);
       refreshPaidBox();
       box.appendChild(row);
     });
+    markNewRow(box);
   }
 
   // Card payments now live in their own section, so one-offs stay purely ad-hoc.
@@ -1993,11 +2191,18 @@
 
       var del = el("button", "del", { type: "button", "aria-label": "Remove" });
       del.innerHTML = "&times;";
-      del.addEventListener("click", function () { state.oneoffs.splice(i, 1); renderOneoffs(); recompute(); });
+      del.addEventListener("click", function () {
+        removeRow(row, function () {
+          var at = state.oneoffs.indexOf(o);
+          if (at >= 0) state.oneoffs.splice(at, 1);
+          renderOneoffs(); recompute();
+        });
+      });
 
       row.appendChild(desc); row.appendChild(dirBtn); row.appendChild(amtWrap); row.appendChild(del);
       box.appendChild(row);
     });
+    markNewRow(box);
   }
 
   // drop one-off payments once the pay period they were logged in has ended; returns true if any were removed
@@ -2013,7 +2218,7 @@
 
   function sumBalances(arr) { return arr.reduce(function (s, c) { return s + num(c.balance); }, 0); }
 
-  // ---------- Runway computation ----------
+  // ---------- Payday tab computation ----------
   function recompute() {
     if (clearOldOneoffs()) renderOneoffs(); // expire one-offs if a payday passed while the app stayed open
     if (clearOldCardPayments()) renderCardPayments(); // same for card payments whose due date has passed
@@ -2089,7 +2294,7 @@
     save();
 
     var availEl = document.getElementById("available");
-    availEl.textContent = money(available);
+    setMoney(availEl, available);
     availEl.classList.toggle("neg", available < 0);
     var hero = document.getElementById("hero");
     hero.classList.toggle("short-neg", available < 0);
@@ -2295,7 +2500,7 @@
     document.getElementById("assetsHead").textContent = money(assets);
 
     var nwEl = document.getElementById("netWorth");
-    nwEl.textContent = money(net);
+    setMoney(nwEl, net);
     nwEl.classList.toggle("neg", net < 0);
     var nwHero = document.getElementById("nwHero");
     nwHero.classList.toggle("short-neg", net < 0);
@@ -2756,22 +2961,22 @@
     });
 
     document.getElementById("addBill").addEventListener("click", function () {
-      state.bills.push({ name: "", amount: "", due: "" }); renderBills(); recompute();
+      state.bills.push({ name: "", amount: "", due: "" }); flagNewRow(); renderBills(); recompute();
     });
     document.getElementById("addOneoff").addEventListener("click", function () {
       state.oneoffs.push({ desc: "", amount: "", dir: "out", date: todayISO(), periodEnd: dateToISO(nextPayday(new Date())) });
-      renderOneoffs(); recompute();
+      flagNewRow(); renderOneoffs(); recompute();
     });
     document.getElementById("addCard").addEventListener("click", function () {
       state.cards.push({ name: "", balance: "", id: uid(), dueDay: "", payAmount: "", payFor: "" });
-      renderCards(); renderCardPayments(); recompute();
+      flagNewRow(); renderCards(); renderCardPayments(); recompute();
     });
     document.getElementById("addLoan").addEventListener("click", function () {
       state.loans.push({ name: "", balance: "", id: uid(), payment: "", dueDay: "", lastApplied: "" });
-      renderLoans(); renderCardPayments(); recompute();
+      flagNewRow(); renderLoans(); renderCardPayments(); recompute();
     });
     document.getElementById("addAsset").addEventListener("click", function () {
-      state.assets.push({ name: "", balance: "", type: "savings" }); renderAssets(); recomputeNetWorth();
+      state.assets.push({ name: "", balance: "", type: "savings" }); flagNewRow(); renderAssets(); recomputeNetWorth();
     });
     document.getElementById("addSheOwes").addEventListener("click", function () {
       S().sheOwes.push({ desc: "", date: todayISO(), price: "" });

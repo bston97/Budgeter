@@ -1,6 +1,6 @@
 # Roadmap
 
-What's next for **Runway** (the Budgeter web app), and why. This is the forward-looking
+What's next for **Penny Pincher** (the Budgeter web app), and why. This is the forward-looking
 companion to [CHANGELOG.md](CHANGELOG.md) — the changelog records what already shipped,
 this file records what's worth building. When something lands, it moves out of here and
 into the changelog under its release.
@@ -15,7 +15,7 @@ a name you can search for stays true and a number doesn't.
 
 Live app: https://bston97.github.io/Budgeter/
 
-**Who this is for.** Runway is a real multi-user app, not a personal tool. Anyone can sign
+**Who this is for.** Penny Pincher is a real multi-user app, not a personal tool. Anyone can sign
 up, and each account already gets its own private data. That means items below which look
 like polish — first-run setup, pay schedules other than semi-monthly, more than one
 checking account — are actually the difference between the app working for someone else
@@ -53,7 +53,7 @@ appended rather than rewritten, capped in length so it can't grow without bound,
 guarded in `migrate()` with an `Array.isArray` check so states saved before the feature
 existed load clean.
 
-**Display.** A block on the Runway tab listing the last several periods — projected,
+**Display.** A block on the Payday tab listing the last several periods — projected,
 actual, and the difference — plus a sparkline of the delta over time, reusing the inline
 SVG approach in `renderNetWorthTrend()` rather than adding a charting
 dependency. It stays hidden until there are at least two periods to compare, the same way
@@ -150,7 +150,7 @@ settings page is the natural place to fix that properly.
 Car payment $340, Electric $95, Phone $70, Internet $60, Groceries $400, plus a "Visa,"
 a "Car loan," and Robinhood/401(k)/Savings — all from `defaults()`.
 Every one has to be found and deleted before the app tells you the truth, and until then
-the headline number on the Runway tab is fiction. Placeholder rows are a reasonable way
+the headline number on the Payday tab is fiction. Placeholder rows are a reasonable way
 to show the shape of the thing, but they shouldn't be indistinguishable from real data.
 
 **More than one checking account.** `state.checking` is a single string, so the entire
@@ -169,7 +169,7 @@ would fit the app's style better than a confirm dialog on every row.
 **Export / backup.** Everything lives in a single Supabase row with no way out — no CSV,
 no JSON download. Worth having before there's years of history worth losing.
 
-**Bill reminders.** Runway is an installed PWA and already knows every due date. It has
+**Bill reminders.** Penny Pincher is an installed PWA and already knows every due date. It has
 everything it needs to tell you a bill is due tomorrow, and currently tells you nothing
 unless you open it.
 
@@ -225,7 +225,7 @@ single highest-value change on the board.
 
 Deliberately out of scope, recorded here so they stop coming back up.
 
-**Bank / Plaid integration.** Manual entry is the point. Runway is a projection tool that
+**Bank / Plaid integration.** Manual entry is the point. Penny Pincher is a projection tool that
 asks what you expect to happen, not an aggregator that reports what already did. Automatic
 balance syncing would make it a worse version of something that already exists.
 
