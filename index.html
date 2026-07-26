@@ -1287,6 +1287,13 @@
   // are kept, sections only they touched are taken, and when both changed the same one
   // theirs wins — it reached the server first. Whatever field is being typed in right now
   // always counts as "ours", since input handlers write to state on every keystroke.
+  // Which on-screen list each state section draws into, so a merge can tell whether the
+  // rows someone is about to type into are still bound to objects that exist.
+  var SECTION_BOXES = {
+    bills: ["bills"], oneoffs: ["oneoffs"], cards: ["cards"],
+    loans: ["loans"], assets: ["assets"], settle: ["sheOwes", "iOwe"]
+  };
+  var staleBoxes = [];
   function mergeRemote(remote) {
     var merged = migrate(JSON.parse(JSON.stringify(remote)));
     var was = baseState || {};
@@ -1296,12 +1303,18 @@
     Object.keys(keys).forEach(function (k) {
       if (k === "_rev") return;
       var mine = canon(state[k]), theirs = canon(merged[k]);
-      if (mine === theirs) return;                                       // already agree
+      // Same content, but `merged` was parsed fresh so its objects are new ones. Rows on
+      // screen hold closures over the objects in `state`; swapping in equal-but-different
+      // objects would orphan those handlers and silently drop whatever is typed next.
+      if (mine === theirs) { merged[k] = state[k]; return; }
       // Never pulled this session (offline at sign-in), so there's no basis for telling who
       // changed what. Keep ours — the behavior from before this fix — rather than dropping
       // what was just typed on this device.
       if (!baseState) { merged[k] = state[k]; return; }
-      if (mine !== canon(was[k]) && theirs === canon(was[k])) merged[k] = state[k];
+      if (mine !== canon(was[k]) && theirs === canon(was[k])) { merged[k] = state[k]; return; }
+      // Taken from the server: this section's rows on screen are now bound to objects that
+      // are no longer in state. Note it so focus landing here forces a rebuild first.
+      if (SECTION_BOXES[k]) staleBoxes = staleBoxes.concat(SECTION_BOXES[k]);
     });
     state = merged;
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
@@ -1312,11 +1325,23 @@
   }
   function redrawFromState() {
     pendingRedraw = false;
+    staleBoxes = [];
     suppressSave = true;
     renderAll();
     suppressSave = false;
   }
-  function flushRedraw() { if (pendingRedraw && !isTyping()) redrawFromState(); }
+  function flushRedraw() {
+    if (!pendingRedraw) return;
+    if (!isTyping()) { redrawFromState(); return; }
+    // Focus moved straight from one field to another, so the "stopped typing" moment never
+    // arrives. If it landed in a section the merge replaced, rebuild now — by construction
+    // we had no local edits there, so only the caret position is lost, not any data.
+    var a = document.activeElement;
+    for (var i = 0; i < staleBoxes.length; i++) {
+      var box = document.getElementById(staleBoxes[i]);
+      if (box && box.contains(a)) { redrawFromState(); return; }
+    }
+  }
   function isTyping() {
     var a = document.activeElement;
     return !!(a && (a.tagName === "INPUT" || a.tagName === "SELECT" || a.tagName === "TEXTAREA"));
@@ -3057,7 +3082,7 @@
         state = migrate(defaults());
         // A reset is an explicit "replace everything" — drop the synced copy so the merge
         // in pushCloud can't treat the cleared sections as ours-unchanged and restore them.
-        syncedRev = null; baseState = null; pendingRedraw = false;
+        syncedRev = null; baseState = null; pendingRedraw = false; staleBoxes = [];
         suppressSave = false;
         renderAll();
         save();
@@ -3140,19 +3165,22 @@
         state = migrate(defaults());
         unsubscribeShared();
         sharedMode = false; sharedData = null;
-        syncedRev = null; baseState = null; pendingRedraw = false; // never merge against another account's copy
+        syncedRev = null; baseState = null; pendingRedraw = false; staleBoxes = []; // never merge against another account's copy
         suppressSave = false;
         showAuth();
       });
     });
 
     // flush pending saves when leaving the page, and retry when the connection returns
+    // Both paths gate on "is anything actually unsaved". Writing with nothing pending isn't
+    // just wasted requests — every write stamps a new _rev, which makes every other signed-in
+    // device think the state moved and run a merge and full redraw for nothing.
     window.addEventListener("online", function () {
-      if (user) pushCloud();
+      if (user && pendingSave) pushCloud();
       if (sharedMode && sharedPending) pushShared();
     });
     function flushPending() {
-      if (user && cloudTimer) { clearTimeout(cloudTimer); pushCloud(); }
+      if (user && pendingSave) { clearTimeout(cloudTimer); pushCloud(); }
       if (sharedMode && sharedPending) { clearTimeout(sharedTimer); pushShared(); }
     }
     document.addEventListener("visibilitychange", function () {
@@ -3286,7 +3314,7 @@
   function pullCloud(u) {
     setSync("loading");
     // switching accounts re-enters here without a sign-out, so drop the previous copy first
-    syncedRev = null; baseState = null;
+    syncedRev = null; baseState = null; pendingRedraw = false; staleBoxes = [];
     sb.from("budgets").select("data").eq("user_id", u.id).maybeSingle()
       .then(function (res) {
         if (res && res.error) { setSync("error"); return; } // keep local cache visible
