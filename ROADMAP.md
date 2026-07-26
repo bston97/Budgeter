@@ -199,6 +199,15 @@ balance syncing would make it a worse version of something that already exists.
 1.7.0 covers the actual need. General sharing, households, or permissions would be a
 different app.
 
-**A build step or framework.** One HTML file, no dependencies, no toolchain — you can open
-it, read it, and deploy it by pushing. That constraint has kept the app fast and
-debuggable, and it's a feature rather than a limitation to grow out of.
+**A framework adopted for its own sake.** What's worth protecting here isn't the single
+file — it's what the single file currently buys: the app loads fast, you can read the
+whole thing top to bottom, there's no dependency tree to maintain, and deploying is a
+push. Rewriting onto React or a bundler because that's what apps use would trade all of
+that for nothing.
+
+This is deliberately written as a set of qualities rather than as "never add tooling,"
+because whether the current structure is still the best way to get them is an open
+question — not a settled one. The test safety net above is already a case in point: the
+logic lives inside an IIFE in a `<script>` tag, so nothing can be imported and nothing can
+be tested, and that's a real cost being paid for the current shape. Any proposal that
+preserves the qualities above is fair game, including ones that introduce a build step.
