@@ -188,6 +188,22 @@ uses `node:test` and `node:assert/strict` and imports `js/core.js` directly — 
 are the interchange format that runs untranspiled in both the browser and Node, which is
 exactly why Step 1 uses them.
 
+> **Prerequisite: Node isn't currently installed on the dev machine** (nor Deno or Bun;
+> the `python` on PATH is a Microsoft Store stub). Step 1 needs it installed first.
+>
+> Until then, headless Edge is a working stand-in and needs nothing installed — it runs
+> the real JS engine against a test page:
+>
+> ```
+> msedge --headless=new --disable-gpu --virtual-time-budget=5000 --dump-dom file:///…/test.html
+> ```
+>
+> It also doubles as a smoke test: loading `index.html` this way and checking that
+> JS-computed values are present in the dumped DOM (`#billsTotal` reads `$2,165.00` from
+> the default bills) proves the script parsed and `boot()` ran. That catches a syntax
+> error before a deploy does. Note `--dump-dom` writes to stdout, which PowerShell drops
+> unless you redirect it via `Start-Process -RedirectStandardOutput`.
+
 **The first test file writes itself from the changelog.** Each shipped bug becomes a
 pinned regression case:
 

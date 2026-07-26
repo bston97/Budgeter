@@ -1063,6 +1063,10 @@
   var retryTimer = null;
   var pendingSave = false;
   var knownHasPassword = false;
+  var cloudSeq = 0;         // bumps per queued edit, so a push knows if a newer one is waiting
+  var syncedRev = null;     // _rev of the server copy we last saw; anything else means another device wrote
+  var baseState = null;     // that same copy, kept so a conflict can be merged section by section
+  var pendingRedraw = false;
 
   // ---------- state helpers ----------
   function defaults() {
@@ -1175,21 +1179,80 @@
   }
   function scheduleCloud() {
     if (!sb || !user) return;
+    cloudSeq++;
     pendingSave = true;
     setSync("saving");
     clearTimeout(cloudTimer);
     cloudTimer = setTimeout(pushCloud, 900);
   }
+  // Two devices on one account each hold the whole state in memory, so whichever writes
+  // last would erase everything the other changed. Look at what's actually on the server
+  // before overwriting it, and reconcile if it moved since we last synced.
   function pushCloud() {
     if (!sb || !user) return;
     clearTimeout(retryTimer);
-    sb.from("budgets")
-      .upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() })
+    sb.from("budgets").select("data").eq("user_id", user.id).maybeSingle()
       .then(function (res) {
-        if (res && res.error) onSaveFail();
-        else { pendingSave = false; setSync("saved"); }
+        if (res && res.error) { onSaveFail(); return; }
+        var remote = res && res.data ? res.data.data : null;
+        if (remote && (remote._rev || null) !== syncedRev) mergeRemote(remote);
+        writeCloud();
       })
       .catch(onSaveFail);
+  }
+  function writeCloud() {
+    if (!sb || !user) return;
+    var seqAtPush = cloudSeq;
+    state._rev = uid(); // identifies this write, so we can recognize our own copy later
+    var snapshot = JSON.parse(JSON.stringify(state)); // what the server will hold, for the next merge
+    sb.from("budgets")
+      .upsert({ user_id: user.id, data: snapshot, updated_at: new Date().toISOString() })
+      .then(function (res) {
+        if (res && res.error) { onSaveFail(); return; }
+        syncedRev = snapshot._rev;
+        baseState = snapshot;
+        if (seqAtPush === cloudSeq) pendingSave = false; // don't clear if another edit queued meanwhile
+        setSync("saved");
+      })
+      .catch(onSaveFail);
+  }
+  // Merge per top-level section against the copy we last synced: sections only we touched
+  // are kept, sections only they touched are taken, and when both changed the same one
+  // theirs wins — it reached the server first. Whatever field is being typed in right now
+  // always counts as "ours", since input handlers write to state on every keystroke.
+  function mergeRemote(remote) {
+    var merged = migrate(JSON.parse(JSON.stringify(remote)));
+    var was = baseState || {};
+    var keys = {};
+    Object.keys(state).forEach(function (k) { keys[k] = 1; });
+    Object.keys(merged).forEach(function (k) { keys[k] = 1; });
+    Object.keys(keys).forEach(function (k) {
+      if (k === "_rev") return;
+      var mine = canon(state[k]), theirs = canon(merged[k]);
+      if (mine === theirs) return;                                       // already agree
+      // Never pulled this session (offline at sign-in), so there's no basis for telling who
+      // changed what. Keep ours — the behavior from before this fix — rather than dropping
+      // what was just typed on this device.
+      if (!baseState) { merged[k] = state[k]; return; }
+      if (mine !== canon(was[k]) && theirs === canon(was[k])) merged[k] = state[k];
+    });
+    state = merged;
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    // renderAll() rewrites every field, so holding it until they stop typing is the
+    // difference between showing their changes and eating their keystrokes.
+    if (isTyping()) { pendingRedraw = true; return; }
+    redrawFromState();
+  }
+  function redrawFromState() {
+    pendingRedraw = false;
+    suppressSave = true;
+    renderAll();
+    suppressSave = false;
+  }
+  function flushRedraw() { if (pendingRedraw && !isTyping()) redrawFromState(); }
+  function isTyping() {
+    var a = document.activeElement;
+    return !!(a && (a.tagName === "INPUT" || a.tagName === "SELECT" || a.tagName === "TEXTAREA"));
   }
   function onSaveFail() {
     setSync("error");
@@ -1206,6 +1269,16 @@
 
   // ---------- utilities ----------
   function uid() { return "c" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
+  // Stable stringify for comparing two copies of a section: jsonb reorders object keys on
+  // the way back out, so a plain JSON.stringify can't tell "changed" from "reordered".
+  function canon(v) {
+    if (v === undefined) return "null";
+    if (v === null || typeof v !== "object") return JSON.stringify(v);
+    if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+    return "{" + Object.keys(v).sort().map(function (k) {
+      return JSON.stringify(k) + ":" + canon(v[k]);
+    }).join(",") + "}";
+  }
   function num(v) {
     var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
     return isNaN(n) ? 0 : n;
@@ -2859,6 +2932,7 @@
         state = migrate(defaults());
         unsubscribeShared();
         sharedMode = false; sharedData = null;
+        syncedRev = null; baseState = null; pendingRedraw = false; // never merge against another account's copy
         suppressSave = false;
         showAuth();
       });
@@ -2880,8 +2954,10 @@
     });
     window.addEventListener("pagehide", flushPending);
 
-    // apply any shared change that arrived while a settle field had focus
-    document.addEventListener("focusout", function () { setTimeout(flushRemoteSettle, 0); });
+    // apply anything that arrived while a field had focus and was held back
+    document.addEventListener("focusout", function () {
+      setTimeout(function () { flushRemoteSettle(); flushRedraw(); }, 0);
+    });
   }
 
   // ---------- auth flow ----------
@@ -3001,12 +3077,17 @@
   }
   function pullCloud(u) {
     setSync("loading");
+    // switching accounts re-enters here without a sign-out, so drop the previous copy first
+    syncedRev = null; baseState = null;
     sb.from("budgets").select("data").eq("user_id", u.id).maybeSingle()
       .then(function (res) {
         if (res && res.error) { setSync("error"); return; } // keep local cache visible
         if (res && res.data && res.data.data) {
           suppressSave = true;
           state = migrate(res.data.data);
+          // remember exactly what the server holds, so a later conflict can be merged against it
+          syncedRev = state._rev || null;
+          baseState = JSON.parse(JSON.stringify(state));
           var changed = clearOldOneoffs(); // expire stale one-offs from the loaded data
           try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
           renderAll();
