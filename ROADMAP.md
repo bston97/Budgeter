@@ -123,6 +123,33 @@ day. Anyone with two income streams currently can't represent them.
 you're aiming at. "$3,000 for the car repair by March" is a different question from
 "what's my savings balance," and the app can't answer it.
 
+**A settings page.** Everything that configures the app is scattered across the edges of
+the screen. The theme toggle, "Set password," and "Sign out" live in the header
+(`index.html:601`), the password panel expands inline underneath it (`index.html:612`),
+and "Reset all data" is buried in the footer next to a run-on sentence
+(`index.html:1043`). None of it belongs in the flow of a budgeting screen, and there's
+nowhere to put the next setting that comes along.
+
+A proper settings view would collect what already exists — theme, password, sign out,
+clear data — and give a home to things that currently can't exist at all: **which tabs to
+show** (not everyone needs Settle up), the participant names that are currently editable
+only from inside the Settle-up tab, and whatever the items above turn out to need. Worth
+noting the tab strip hardcodes "you & Maria" as the Settle-up subtitle
+(`index.html:629`) even though those names have been user-editable since 1.7.0 — a
+settings page is the natural place to fix that properly.
+
+**First-run setup.** A brand-new account opens onto someone else's budget: Rent $1,200,
+Car payment $340, Electric $95, Phone $70, Internet $60, Groceries $400, plus a "Visa,"
+a "Car loan," and Robinhood/401(k)/Savings — all from `defaults()` (`index.html:1077`).
+Every one has to be found and deleted before the app tells you the truth, and until then
+the headline number on the Runway tab is fiction. Placeholder rows are a reasonable way
+to show the shape of the thing, but they shouldn't be indistinguishable from real data.
+
+**More than one checking account.** `state.checking` is a single string, so the entire
+runway calculation runs off one number. A joint account plus a personal one, or checking
+plus a spending account you actually pay from, can't be represented — you have to add
+them in your head and enter the total, which then can't be reconciled against either bank.
+
 **Undo on delete.** Every `×` button deletes immediately and permanently —
 `state.bills.splice(i, 1)` (`index.html:1881`), and the same one-liner for cards
 (`index.html:1545`), loans (`index.html:1612`), assets (`index.html:1801`), and one-off
@@ -138,6 +165,25 @@ no JSON download. Worth having before there's years of history worth losing.
 **Bill reminders.** Runway is an installed PWA and already knows every due date. It has
 everything it needs to tell you a bill is due tomorrow, and currently tells you nothing
 unless you open it.
+
+**A test safety net.** There are no tests at all, and the changelog is the argument for
+them. Look at what's already been fixed after the fact: a due-day field that turned "05"
+into the 15th while you typed (1.8.2), days 29–31 that don't exist in every month
+(1.8.2), a take-home percentage over 100 multiplying a paycheck tenfold (1.8.1), typing a
+loan's due day registering as a missed payment and taking money off the balance (1.14.1),
+a projection clobbered before the thing that displayed it could read it (1.17.1). Every
+one is date math or input clamping, and every one shipped before it was caught.
+
+That's the highest-risk code in the app and the easiest kind to test — `nextPayday()`,
+`mostRecentPayday()`, `currentPeriod()`, `occurrenceInPeriod()`, `billOccurrence()`,
+`countWeekdays()`, and `projectedCheck()` are all pure functions of a date and some state.
+Pin them against known dates — month ends, February, EOM bills, a payday landing on the
+period boundary — and this whole class of bug stops reaching you.
+
+The obstacle is that the app is one HTML file with the logic inside a `<script>` tag and
+an IIFE, so nothing is importable and there's no test runner. Solving that without
+sacrificing the single-file property is a real design question, and a good thing to settle
+during the architecture review rather than by bolting on a framework.
 
 ---
 
