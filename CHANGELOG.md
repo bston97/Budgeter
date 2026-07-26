@@ -7,6 +7,15 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.18.1] — 2026-07-26
+
+### Fixed
+- **Two devices can no longer erase each other's changes.** Your whole budget is held in memory on every device you have open, and a save wrote that copy over whatever was in the cloud — so if your phone had been sitting open since yesterday, the next thing you typed on it would quietly wipe everything you'd changed on your laptop. There was no warning, and because it's stored as one record, it took everything with it, not just the field you touched.
+
+  Saves now look at what's actually in the cloud first. If another device wrote something since this one last synced, the two are combined section by section: what you changed here is kept, what you changed there is picked up, and only when both devices edited *the same* section does one have to win (the one that saved first). Whatever field you're typing in is always treated as yours, so a save landing mid-keystroke can't take the number out from under you. Changes arriving while you're typing are held and shown the moment you leave the field, the same way the shared Settle-up tab already worked.
+
+  Two smaller fixes came along with it, both things the shared ledger already had and the private path never got: a save that finishes while you're still typing no longer marks your newest edits as saved, and writes are tagged so the app can recognize its own.
+
 ## [1.18.0] — 2026-07-26
 
 ### Added
