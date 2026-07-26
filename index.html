@@ -2850,6 +2850,9 @@
         suppressSave = true;
         try { localStorage.removeItem(KEY); } catch (e) {}
         state = migrate(defaults());
+        // A reset is an explicit "replace everything" — drop the synced copy so the merge
+        // in pushCloud can't treat the cleared sections as ours-unchanged and restore them.
+        syncedRev = null; baseState = null; pendingRedraw = false;
         suppressSave = false;
         renderAll();
         save();
