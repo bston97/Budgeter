@@ -12,6 +12,12 @@ findable as the file shifts.
 
 Live app: https://bston97.github.io/Budgeter/
 
+**Who this is for.** Runway is a real multi-user app, not a personal tool. Anyone can sign
+up, and each account already gets its own private data. That means items below which look
+like polish — first-run setup, pay schedules other than semi-monthly, more than one
+checking account — are actually the difference between the app working for someone else
+and not. They're prioritized accordingly.
+
 ---
 
 ## Next up
@@ -166,6 +172,33 @@ no JSON download. Worth having before there's years of history worth losing.
 everything it needs to tell you a bill is due tomorrow, and currently tells you nothing
 unless you open it.
 
+**Shared ledgers for any two people.** The Settle-up tab is shared between exactly two
+accounts today, and it works — but it only works *once*. `SHARED_ID` is the hardcoded
+string `"household"` (`index.html:2341`), so there is a single shared ledger row in the
+entire app, kept private to the two accounts on a Supabase allowlist set up by hand. A
+third person who signs up can never pair with anyone. Any two other users wanting what you
+and Maria have would need someone to edit the database for them.
+
+Generalizing it means three pieces:
+
+- **Identity.** A shared ledger keyed to the pair that owns it rather than to a constant,
+  so many can exist side by side. Everything downstream — `loadSharedSettle()`
+  (`index.html:2391`), `pushShared()` (`index.html:2366`), and the realtime subscription
+  filter in `subscribeShared()` (`index.html:2504`) — currently filters on `SHARED_ID` and
+  would key off the pair instead.
+- **Mutual confirmation.** One person invites, the other accepts, and nothing is shared
+  until both have said yes. Until then the tab shows the pending state plainly — visible
+  but not editable, blurred, with text explaining it can't be used until both sides
+  confirm. Consent from both people before a single shared record exists is the whole
+  point; being added to someone's shared ledger without agreeing shouldn't be possible.
+- **Enforcement in the database, not the page.** Privacy here can't be a UI decision.
+  Today's allowlist is enforced by Supabase row-level security, and that has to stay true
+  when pairs are dynamic: policies driven by the two member ids stored on the row, so a
+  pair's ledger is unreadable to everyone else no matter what any client asks for.
+
+Way down the line, and worth designing carefully rather than quickly — this is the one
+feature where a mistake exposes one user's data to another.
+
 **A test safety net.** There are no tests at all, and the changelog is the argument for
 them. Look at what's already been fixed after the fact: a due-day field that turned "05"
 into the 15th while you typed (1.8.2), days 29–31 that don't exist in every month
@@ -194,10 +227,6 @@ Deliberately out of scope, recorded here so they stop coming back up.
 **Bank / Plaid integration.** Manual entry is the point. Runway is a projection tool that
 asks what you expect to happen, not an aggregator that reports what already did. Automatic
 balance syncing would make it a worse version of something that already exists.
-
-**Multi-user beyond the shared settle-up ledger.** The two-account shared ledger from
-1.7.0 covers the actual need. General sharing, households, or permissions would be a
-different app.
 
 **A framework adopted for its own sake.** What's worth protecting here isn't the single
 file — it's what the single file currently buys: the app loads fast, you can read the
