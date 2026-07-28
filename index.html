@@ -484,6 +484,33 @@
   .np-range { font-size: 12px; color: var(--ink-faint); }
   .np-note { font-size: 12px; color: var(--ink-faint); margin: 4px 0 6px; }
 
+  /* Period history — projected vs what actually landed */
+  .ph-change { font-size: 13px; font-weight: 650; color: var(--ink-soft); }
+  .ph-change.under { color: var(--crit); }
+  .ph-change.over { color: var(--accent); }
+  .ph-spark { width: 100%; height: 44px; display: block; margin: 2px 0 10px; overflow: visible; }
+  .ph-rows { display: flex; flex-direction: column; }
+  .ph-row {
+    display: grid; grid-template-columns: 1fr 92px 92px 84px;
+    gap: 8px; align-items: baseline;
+    padding: 7px 0; border-top: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .ph-row.head {
+    border-top: 0; padding-bottom: 4px;
+    font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 700;
+  }
+  .ph-row .ph-when { color: var(--ink); font-weight: 600; }
+  .ph-row .ph-num { text-align: right; color: var(--ink-soft); }
+  .ph-row .ph-delta { text-align: right; font-weight: 650; }
+  .ph-row .ph-delta.under { color: var(--crit); }
+  .ph-row .ph-delta.over { color: var(--accent); }
+  .ph-row .ph-delta.none { color: var(--ink-faint); font-weight: 500; }
+  @media (max-width: 460px) {
+    .ph-row { grid-template-columns: 1fr 74px 74px 70px; gap: 5px; font-size: 12px; }
+  }
+
   /* payday rollover nudge — heads-up, not alarm */
   .rollover {
     background: var(--warn-soft); border: 1px solid var(--warn);
@@ -901,6 +928,18 @@
               </div>
             </div>
           </section>
+
+          <section class="card" id="historyCard" hidden>
+            <div class="card-head">
+              <h2>How past periods went</h2>
+              <span class="ph-change" id="phSummary"></span>
+            </div>
+            <div class="card-body">
+              <p class="note-line penny-say"><span class="penny-tag">Penny</span>What I projected for each payday, against what you actually had. I only learn this when you confirm a balance after payday.</p>
+              <svg class="ph-spark" id="phSpark" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true"></svg>
+              <div class="ph-rows" id="phRows"></div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -1117,7 +1156,8 @@ import {
   stripTime, isoToDate, dateToISO, todayISO,
   nextPayday, mostRecentPayday, currentPeriod, payPeriodStart, countWeekdays,
   occurrenceInMonth, occurrenceInPeriod, occurrenceAfter, mostRecentOccurrence,
-  billDate, billOccurrence, cardDueDate, projectedCheck
+  billDate, billOccurrence, cardDueDate, projectedCheck,
+  recordPeriod, periodDelta, periodStats, sparkPoints, PERIOD_HISTORY_CAP
 } from "./js/core.js";
 
 (function () {
@@ -1152,6 +1192,7 @@ import {
       oneoffs: [],
       pay: { mode: "hourly", rate: "", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "", salary: "", netCheck: "" },
       nwHistory: [],
+      periodHistory: [],
       cards: [{ name: "Visa", balance: "" }],
       bills: [
         { name: "Rent", amount: "1200", due: "1" },
@@ -1223,6 +1264,7 @@ import {
     if (s.pay.per !== "hour" && s.pay.per !== "day") s.pay.per = "hour";
     if (s.pay.hoursUnit !== "day" && s.pay.hoursUnit !== "week") s.pay.hoursUnit = "day";
     if (!Array.isArray(s.nwHistory)) s.nwHistory = [];
+    if (!Array.isArray(s.periodHistory)) s.periodHistory = [];
     if (typeof s.rolloverSeen !== "string") s.rolloverSeen = "";
     // first run: start the clock at the last payday so an existing balance is never questioned retroactively
     if (!s.rolloverSeen) {
@@ -2158,6 +2200,7 @@ import {
     recomputeNetWorth();
     updateCardPayTotals();
     renderRollover(); // so the nudge appears even if the tab stayed open across a payday
+    renderPeriodHistory();
   }
 
   // A payday the user hasn't acknowledged yet, or null.
@@ -2171,6 +2214,14 @@ import {
     state.rolloverSeen = dateToISO(payday);
     save();
     renderRollover();
+  }
+  // Called only when they confirm a real balance — dismissing the nudge means we never
+  // learned what actually landed, and a guessed figure would be worse than no row at all.
+  function recordPeriodResult(payday, actual) {
+    var iso = dateToISO(payday);
+    var pa = state.projectedAfter;
+    var projected = (pa && pa.d === iso) ? pa.n : null; // no projection for that date → row with no delta
+    state.periodHistory = recordPeriod(state.periodHistory, { d: iso, p: projected, a: actual }, PERIOD_HISTORY_CAP);
   }
   function renderRollover() {
     var bar = document.getElementById("rollover");
@@ -2387,14 +2438,8 @@ import {
     box.hidden = false;
 
     var vals = h.map(function (p) { return p.n; });
-    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
-    var span = (max - min) || 1;
     var W = 300, H = 48, pad = 4;
-    var pts = h.map(function (p, i) {
-      var x = h.length === 1 ? W : (i / (h.length - 1)) * W;
-      var y = pad + (1 - (p.n - min) / span) * (H - pad * 2);
-      return [x, y];
-    });
+    var pts = sparkPoints(vals, W, H, pad);
     var line = pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ");
     var area = "0," + H + " " + line + " " + W + "," + H;
     var change = vals[vals.length - 1] - vals[0];
@@ -2413,6 +2458,80 @@ import {
     ch.className = "nw-change " + (up ? "up" : "down");
     setText("nwSparkFrom", fmtShort(h[0].d));
     setText("nwSparkTo", fmtShort(h[h.length - 1].d));
+  }
+
+  // ---------- Period history ----------
+  // Projected vs actual for each payday you've confirmed. Hidden until two periods exist,
+  // the same rule the net-worth trend uses — one row isn't a trend and shouldn't look like one.
+  function renderPeriodHistory() {
+    var card = document.getElementById("historyCard");
+    if (!card) return;
+    var h = state.periodHistory || [];
+    if (h.length < 2) { card.hidden = true; return; }
+    card.hidden = false;
+
+    var stats = periodStats(h);
+    var sum = document.getElementById("phSummary");
+    if (stats) {
+      var avgUnder = stats.avg < 0;
+      sum.textContent = "typically " + money(Math.abs(stats.avg)) + (avgUnder ? " under" : " over");
+      sum.className = "ph-change " + (avgUnder ? "under" : "over");
+    } else {
+      sum.textContent = "";
+      sum.className = "ph-change";
+    }
+
+    // Only periods with both figures can be plotted; fewer than two and the line is meaningless.
+    var deltas = [];
+    h.forEach(function (e) { var d = periodDelta(e); if (d !== null) deltas.push(d); });
+    var spark = document.getElementById("phSpark");
+    if (deltas.length >= 2) {
+      var W = 300, H = 44, pad = 4;
+      var pts = sparkPoints(deltas, W, H, pad);
+      var line = pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" ");
+      var end = pts[pts.length - 1];
+      var last = deltas[deltas.length - 1];
+      var stroke = last < 0 ? "var(--crit)" : "var(--accent)";
+      // a zero line only means something once the series actually straddles it
+      var lo = Math.min.apply(null, deltas), hi = Math.max.apply(null, deltas);
+      var zero = "";
+      if (lo < 0 && hi > 0) {
+        var zy = pad + (1 - (0 - lo) / ((hi - lo) || 1)) * (H - pad * 2);
+        zero = '<line x1="0" y1="' + zy.toFixed(1) + '" x2="' + W + '" y2="' + zy.toFixed(1) +
+               '" stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"></line>';
+      }
+      spark.hidden = false;
+      spark.innerHTML = zero +
+        '<polyline points="' + line + '" fill="none" stroke="' + stroke + '" stroke-width="2" ' +
+        'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>' +
+        '<circle cx="' + end[0].toFixed(1) + '" cy="' + end[1].toFixed(1) + '" r="3" fill="' + stroke + '"></circle>';
+    } else {
+      spark.hidden = true;
+      spark.innerHTML = "";
+    }
+
+    var box = document.getElementById("phRows");
+    box.innerHTML = "";
+    var head = el("div", "ph-row head");
+    ["Payday", "Projected", "Actual", "Difference"].forEach(function (t, i) {
+      var c = el("span", i === 0 ? "ph-when" : (i === 3 ? "ph-delta" : "ph-num"));
+      c.textContent = t;
+      head.appendChild(c);
+    });
+    box.appendChild(head);
+
+    h.slice(-8).reverse().forEach(function (e) {   // newest first, most recent handful
+      var row = el("div", "ph-row");
+      var when = el("span", "ph-when"); when.textContent = fmtShort(e.d);
+      var proj = el("span", "ph-num"); proj.textContent = e.p === null ? "—" : money(e.p);
+      var act = el("span", "ph-num"); act.textContent = money(e.a);
+      var d = periodDelta(e);
+      var del = el("span", "ph-delta " + (d === null ? "none" : d < 0 ? "under" : "over"));
+      del.textContent = d === null ? "—" : (d < 0 ? "−" : "+") + money(Math.abs(d));
+      del.title = d === null ? "No projection was recorded for this payday" : "";
+      row.appendChild(when); row.appendChild(proj); row.appendChild(act); row.appendChild(del);
+      box.appendChild(row);
+    });
   }
 
   // ---------- Credit score ----------
@@ -2778,9 +2897,11 @@ import {
       if (!due) return;
       var box = document.getElementById("roAmount");
       if (!/[0-9]/.test(box.value)) { box.focus(); return; } // no number typed yet — don't silently set $0
-      state.checking = String(num(box.value));
+      var actual = num(box.value);
+      state.checking = String(actual);
       document.getElementById("checking").value = state.checking;
       box.value = "";
+      recordPeriodResult(due, actual); // capture before ack — projectedAfter is still that payday's
       ackRollover(due);   // ack after applying, so the bar clears in one step
       recompute();
     }

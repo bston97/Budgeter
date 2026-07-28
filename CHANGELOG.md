@@ -8,6 +8,15 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.21.0] — 2026-07-28
+
+### Added
+- **How past periods went.** The app has always projected what you'd have left, then thrown that number away once payday arrived. Now it keeps them. A new block on the Payday tab lists each payday you've confirmed a balance for — what was projected, what you actually had, and the difference — with a small chart of that gap over time and a running summary like *"typically $91.50 under"*.
+
+  Nothing extra is asked of you. Both figures already existed: the app records its projection every time it recalculates, and the payday nudge is where you type in your real balance. It just pairs them up now.
+
+  It only learns from a payday where you actually **confirmed a balance** — dismissing the nudge records nothing, because a guessed number is worse than no row. A payday the app never projected for still gets a row, with a dash instead of a made-up difference. The block stays hidden until there are two periods to compare, since one row isn't a trend.
+
 ## [1.20.0] — 2026-07-28
 
 ### Changed
