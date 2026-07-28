@@ -1,0 +1,399 @@
+// Run with:  node --test tests/
+//
+// No dependencies, no config, no build. These import js/core.js directly — the same file
+// the browser loads — so they test the shipping code rather than a copy of it.
+//
+// Most cases below are named after the release that shipped the bug they pin.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  num, money, canon, mergeSections,
+  stripTime, isoToDate, dateToISO, todayISO,
+  nextPayday, mostRecentPayday, currentPeriod, payPeriodStart, countWeekdays,
+  occurrenceInMonth, occurrenceInPeriod, occurrenceAfter, mostRecentOccurrence,
+  billDate, billOccurrence, cardDueDate, projectedCheck
+} from "../js/core.js";
+
+// month is 1-based here so the cases read like dates
+const D = (y, m, d) => new Date(y, m - 1, d);
+const iso = (d) => (d === null ? "null" : dateToISO(d));
+const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 0.005, msg || `${a} !== ~${b}`);
+
+// ---------------------------------------------------------------- parsing & formatting
+
+test("num parses plain and messy input", () => {
+  assert.equal(num("120"), 120);
+  assert.equal(num("1,200.50"), 1200.50);
+  assert.equal(num("$40"), 40);
+  assert.equal(num("-25"), -25);
+  assert.equal(num(""), 0);
+  assert.equal(num("abc"), 0);
+  assert.equal(num(null), 0);
+  assert.equal(num(undefined), 0);
+});
+
+test("money formats, separates thousands, and never renders -$0.00 (1.3.0)", () => {
+  assert.equal(money(0), "$0.00");
+  assert.equal(money(-0.004), "$0.00", "tiny negative rounding must not show a minus");
+  assert.equal(money(-0.006), "-$0.01");
+  assert.equal(money(1234.5), "$1,234.50");
+  assert.equal(money(-89.1), "-$89.10");
+});
+
+test("canon ignores object key order but not array order (1.15.2)", () => {
+  // jsonb reorders keys on the way out, so a plain stringify can't tell changed from reordered
+  assert.equal(canon({ a: 1, b: 2 }), canon({ b: 2, a: 1 }));
+  assert.equal(canon({ x: { p: 1, q: 2 } }), canon({ x: { q: 2, p: 1 } }));
+  assert.notEqual(canon({ a: 1 }), canon({ a: 2 }));
+  assert.notEqual(canon([1, 2]), canon([2, 1]));
+  assert.notEqual(canon(0), canon(null));
+  assert.notEqual(canon(""), canon(null));
+  assert.equal(canon(undefined), "null");
+});
+
+// ------------------------------------------------------------------------------ paydays
+
+test("nextPayday from mid-month and month end", () => {
+  assert.equal(iso(nextPayday(D(2026, 7, 1))), "2026-07-15");
+  assert.equal(iso(nextPayday(D(2026, 7, 15))), "2026-07-31", "on the 15th, next is EOM");
+  assert.equal(iso(nextPayday(D(2026, 7, 25))), "2026-07-31");
+  assert.equal(iso(nextPayday(D(2026, 7, 31))), "2026-08-15", "on EOM, next is the 15th");
+});
+
+test("nextPayday crosses the year boundary", () => {
+  assert.equal(iso(nextPayday(D(2026, 12, 15))), "2026-12-31");
+  assert.equal(iso(nextPayday(D(2026, 12, 31))), "2027-01-15");
+});
+
+test("nextPayday handles February, leap and non-leap", () => {
+  assert.equal(iso(nextPayday(D(2026, 2, 20))), "2026-02-28");
+  assert.equal(iso(nextPayday(D(2028, 2, 20))), "2028-02-29");
+});
+
+test("mostRecentPayday on and around boundaries", () => {
+  assert.equal(iso(mostRecentPayday(D(2026, 7, 15))), "2026-07-15", "on payday, that day counts");
+  assert.equal(iso(mostRecentPayday(D(2026, 7, 16))), "2026-07-15");
+  assert.equal(iso(mostRecentPayday(D(2026, 7, 1))), "2026-06-30");
+  assert.equal(iso(mostRecentPayday(D(2027, 1, 1))), "2026-12-31", "must cross the year boundary");
+});
+
+test("currentPeriod runs from the day after last payday through the next", () => {
+  const p = currentPeriod(D(2026, 7, 25));
+  assert.equal(iso(p.start), "2026-07-16");
+  assert.equal(iso(p.end), "2026-07-31");
+  const q = currentPeriod(D(2026, 7, 15));
+  assert.equal(iso(q.start), "2026-07-16", "on payday the new period has already begun");
+  assert.equal(iso(q.end), "2026-07-31");
+});
+
+test("INVARIANT: every period is 16 days or fewer", () => {
+  // occurrenceInPeriod's two-candidate scan is only correct while this holds
+  for (let m = 1; m <= 12; m++) {
+    for (let d = 1; d <= 28; d++) {
+      const p = currentPeriod(D(2026, m, d));
+      const days = Math.round((p.end - p.start) / 86400000) + 1;
+      assert.ok(days >= 1 && days <= 16, `period at ${iso(D(2026, m, d))} spans ${days} days`);
+    }
+  }
+});
+
+// -------------------------------------------------------------------------- occurrences
+
+test("occurrenceInMonth clamps to the real last day (1.8.2)", () => {
+  assert.equal(iso(occurrenceInMonth(31, 2026, 3)), "2026-04-30", "April has 30 days");
+  assert.equal(iso(occurrenceInMonth(31, 2026, 1)), "2026-02-28");
+  assert.equal(iso(occurrenceInMonth(30, 2028, 1)), "2028-02-29", "leap February");
+  assert.equal(iso(occurrenceInMonth(15, 2026, 6)), "2026-07-15");
+});
+
+test("occurrenceInMonth handles EOM in every month length", () => {
+  assert.equal(iso(occurrenceInMonth("EOM", 2026, 1)), "2026-02-28");
+  assert.equal(iso(occurrenceInMonth("EOM", 2026, 3)), "2026-04-30");
+  assert.equal(iso(occurrenceInMonth("EOM", 2026, 6)), "2026-07-31");
+  assert.equal(iso(occurrenceInMonth("eom", 2026, 6)), "2026-07-31", "lowercase must work too");
+});
+
+test("occurrenceInPeriod finds a due day inside the window, and only inside", () => {
+  const s = D(2026, 7, 16), e = D(2026, 7, 31);
+  assert.equal(iso(occurrenceInPeriod(22, s, e)), "2026-07-22");
+  assert.equal(occurrenceInPeriod(5, s, e), null, "the 5th is not in a 16th–31st window");
+  assert.equal(iso(occurrenceInPeriod("EOM", s, e)), "2026-07-31");
+  assert.equal(occurrenceInPeriod("", s, e), null);
+});
+
+test("occurrenceInPeriod includes both boundary days", () => {
+  const s = D(2026, 7, 16), e = D(2026, 7, 31);
+  assert.equal(iso(occurrenceInPeriod(16, s, e)), "2026-07-16", "start is inclusive");
+  assert.equal(iso(occurrenceInPeriod(31, s, e)), "2026-07-31", "end is inclusive");
+});
+
+test("occurrenceInPeriod works when the window spans two months", () => {
+  assert.equal(iso(occurrenceInPeriod(3, D(2026, 1, 1), D(2026, 1, 15))), "2026-01-03");
+  assert.equal(iso(occurrenceInPeriod("EOM", D(2026, 12, 16), D(2026, 12, 31))), "2026-12-31");
+});
+
+test("billOccurrence resolves numeric days and EOM", () => {
+  assert.equal(iso(billOccurrence({ due: "22" }, D(2026, 7, 10))), "2026-07-22");
+  assert.equal(iso(billOccurrence({ due: "5" }, D(2026, 7, 10))), "2026-08-05", "already passed, roll forward");
+  assert.equal(iso(billOccurrence({ due: "EOM" }, D(2026, 7, 10))), "2026-07-31");
+  assert.equal(iso(billOccurrence({ due: "EOM" }, D(2026, 2, 10))), "2026-02-28");
+  assert.equal(billOccurrence({ due: "" }, D(2026, 7, 10)), null);
+  assert.equal(billOccurrence({ due: "0" }, D(2026, 7, 10)), null);
+});
+
+test("billOccurrence on the due day itself returns today, not next month", () => {
+  assert.equal(iso(billOccurrence({ due: "22" }, D(2026, 7, 22))), "2026-07-22");
+});
+
+test("cardDueDate mirrors bills and rejects a blank day", () => {
+  assert.equal(iso(cardDueDate({ dueDay: "12" }, D(2026, 7, 5))), "2026-07-12");
+  assert.equal(cardDueDate({ dueDay: "" }, D(2026, 7, 5)), null);
+});
+
+test("billDate clamps a 31st to short months", () => {
+  assert.equal(iso(billDate(31, D(2026, 4, 1))), "2026-04-30");
+  assert.equal(iso(billDate(31, D(2026, 2, 1))), "2026-02-28");
+});
+
+test("mostRecentOccurrence walks back, including across a year", () => {
+  assert.equal(iso(mostRecentOccurrence(15, D(2026, 7, 20))), "2026-07-15");
+  assert.equal(iso(mostRecentOccurrence(25, D(2026, 7, 20))), "2026-06-25", "not due yet this month");
+  assert.equal(iso(mostRecentOccurrence(15, D(2026, 1, 5))), "2025-12-15", "must cross into last year");
+});
+
+test("a half-typed due day resolves to a different date (1.14.1)", () => {
+  // typing "15" passes through "1"; if that registered as a missed payment it charged the loan
+  const typing = mostRecentOccurrence(1, D(2026, 7, 20));
+  const done = mostRecentOccurrence(15, D(2026, 7, 20));
+  assert.equal(iso(typing), "2026-07-01");
+  assert.equal(iso(done), "2026-07-15");
+  assert.notEqual(+typing, +done, "these must differ — which is why the schedule re-anchors");
+});
+
+test("occurrenceAfter always lands strictly after the given date", () => {
+  assert.equal(iso(occurrenceAfter(15, D(2026, 7, 15))), "2026-08-15", "same day does not count");
+  assert.equal(iso(occurrenceAfter(20, D(2026, 7, 15))), "2026-07-20");
+});
+
+// ------------------------------------------------------------------ weekdays & paycheck
+
+test("payPeriodStart splits the month correctly", () => {
+  assert.equal(iso(payPeriodStart(D(2026, 7, 15))), "2026-07-01");
+  assert.equal(iso(payPeriodStart(D(2026, 7, 31))), "2026-07-16");
+  assert.equal(iso(payPeriodStart(D(2026, 2, 28))), "2026-02-16");
+});
+
+test("countWeekdays excludes weekends", () => {
+  assert.equal(countWeekdays(D(2026, 7, 6), D(2026, 7, 10)), 5, "a full Mon–Fri");
+  assert.equal(countWeekdays(D(2026, 7, 11), D(2026, 7, 12)), 0, "a weekend alone");
+  assert.equal(countWeekdays(D(2026, 7, 6), D(2026, 7, 6)), 1, "a single weekday");
+});
+
+test("INVARIANT: every 2026 semi-monthly period has 10–12 weekdays", () => {
+  for (let m = 1; m <= 12; m++) {
+    for (const pd of [D(2026, m, 15), new Date(2026, m, 0)]) {
+      const w = countWeekdays(payPeriodStart(pd), pd);
+      assert.ok(w >= 10 && w <= 12, `period ending ${iso(pd)} has ${w} weekdays`);
+    }
+  }
+});
+
+test("salary mode: an exact take-home figure wins over the annual estimate", () => {
+  const r = projectedCheck({ mode: "salary", netCheck: "2000", salary: "60000", takeHome: "75" }, D(2026, 7, 15));
+  assert.equal(r.exact, true);
+  near(r.net, 2000, "an exact net check must be used as-is");
+});
+
+test("salary mode: annual divided by 24, then take-home", () => {
+  const r = projectedCheck({ mode: "salary", netCheck: "", salary: "60000", takeHome: "75" }, D(2026, 7, 15));
+  near(r.gross, 2500);
+  near(r.net, 1875);
+});
+
+test("salary mode returns null with nothing entered", () => {
+  assert.equal(projectedCheck({ mode: "salary", netCheck: "", salary: "", takeHome: "100" }, D(2026, 7, 15)), null);
+});
+
+test("hourly: rate x hours x weekdays worked", () => {
+  const pay = { mode: "hourly", rate: "20", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "" };
+  const r = projectedCheck(pay, D(2026, 7, 15));
+  assert.equal(r.worked, r.weekdays, "no days off means every weekday is worked");
+  near(r.gross, r.worked * 160);
+  near(r.net, r.gross);
+});
+
+test("take-home above 100% is clamped, not multiplied (1.8.1)", () => {
+  const pay = { mode: "hourly", rate: "20", per: "hour", hours: "8", hoursUnit: "day", takeHome: "1000", daysOff: "" };
+  const r = projectedCheck(pay, D(2026, 7, 15));
+  near(r.net, r.gross, "1000% must clamp to 100%");
+});
+
+test("days off cannot go negative or exceed the period (1.8.1)", () => {
+  const base = { mode: "hourly", rate: "20", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100" };
+  const neg = projectedCheck({ ...base, daysOff: "-5" }, D(2026, 7, 15));
+  assert.equal(neg.worked, neg.weekdays, "negative days off must not inflate the check");
+  const over = projectedCheck({ ...base, daysOff: "99" }, D(2026, 7, 15));
+  assert.equal(over.worked, 0, "days off beyond the period floor at zero worked");
+  assert.ok(over.net >= 0, "net must never go negative");
+});
+
+test("blank hours falls back to the placeholder, not zero (1.8.1)", () => {
+  const day = projectedCheck({ mode: "hourly", rate: "20", per: "hour", hours: "", hoursUnit: "day", takeHome: "100", daysOff: "" }, D(2026, 7, 15));
+  assert.equal(day.hoursPerWeekday, 8, "blank must fall back to 8/day");
+  const week = projectedCheck({ mode: "hourly", rate: "20", per: "hour", hours: "", hoursUnit: "week", takeHome: "100", daysOff: "" }, D(2026, 7, 15));
+  assert.equal(week.hoursPerWeekday, 8, "blank weekly must fall back to 40/wk = 8/day");
+});
+
+test("hours entered per week convert to per weekday (1.9.0)", () => {
+  const r = projectedCheck({ mode: "hourly", rate: "20", per: "hour", hours: "37.5", hoursUnit: "week", takeHome: "100", daysOff: "" }, D(2026, 7, 15));
+  near(r.hoursPerWeekday, 7.5);
+});
+
+test("a per-day rate ignores hours entirely", () => {
+  const r = projectedCheck({ mode: "hourly", rate: "200", per: "day", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "" }, D(2026, 7, 15));
+  near(r.gross, r.worked * 200);
+});
+
+test("hourly returns null with no rate", () => {
+  assert.equal(projectedCheck({ mode: "hourly", rate: "", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "" }, D(2026, 7, 15)), null);
+});
+
+// -------------------------------------------------------------------------- iso helpers
+
+test("dateToISO pads, and round-trips through isoToDate with no timezone drift", () => {
+  assert.equal(dateToISO(D(2026, 7, 5)), "2026-07-05");
+  assert.equal(dateToISO(D(2026, 12, 31)), "2026-12-31");
+  assert.equal(dateToISO(isoToDate("2026-02-28")), "2026-02-28");
+  assert.equal(+isoToDate("2026-07-05"), +D(2026, 7, 5));
+  assert.match(todayISO(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("stripTime discards the clock", () => {
+  const d = new Date(2026, 6, 5, 23, 47, 11);
+  assert.equal(stripTime(d).getHours(), 0);
+  assert.equal(dateToISO(stripTime(d)), "2026-07-05");
+});
+
+// -------------------------------------------------------------------------------- merge
+
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+test("HEADLINE: edits to different sections both survive (1.18.1)", () => {
+  const base = { checking: "100", bills: [{ name: "Rent", amount: "1200" }], creditScore: "700" };
+  const local = { checking: "250", bills: [{ name: "Rent", amount: "1200" }], creditScore: "700" };
+  const remote = { checking: "100", bills: [{ name: "Rent", amount: "1300" }], creditScore: "700" };
+  const { merged } = mergeSections(local, clone(remote), base);
+  assert.equal(merged.checking, "250", "our checking edit was lost");
+  assert.equal(merged.bills[0].amount, "1300", "their bills edit was lost");
+});
+
+test("an untouched section takes the remote value", () => {
+  const { merged } = mergeSections(
+    { checking: "100", creditScore: "700" },
+    { checking: "100", creditScore: "780" },
+    { checking: "100", creditScore: "700" });
+  assert.equal(merged.creditScore, "780");
+});
+
+test("when both sides changed the same section, remote wins", () => {
+  const { merged } = mergeSections({ checking: "250" }, { checking: "900" }, { checking: "100" });
+  assert.equal(merged.checking, "900");
+});
+
+test("a stale device with no local edits never clobbers newer remote data", () => {
+  const base = { checking: "100", bills: [], assets: [] };
+  const { merged } = mergeSections(clone(base),
+    { checking: "900", bills: [{ name: "Gym", amount: "40" }], assets: [] }, base);
+  assert.equal(merged.checking, "900");
+  assert.equal(merged.bills.length, 1);
+});
+
+test("with no base (offline at sign-in) local is kept, matching pre-1.18.1 behavior", () => {
+  const { merged } = mergeSections(
+    { checking: "250", creditScore: "700" },
+    { checking: "900", creditScore: "780" }, null);
+  assert.equal(merged.checking, "250");
+  assert.equal(merged.creditScore, "700");
+});
+
+test("jsonb key reordering is not mistaken for an edit (1.15.2)", () => {
+  const base = { pay: { mode: "hourly", rate: "20" } };
+  const { merged } = mergeSections(
+    { pay: { mode: "hourly", rate: "20" } },
+    { pay: { rate: "20", mode: "hourly" } }, base);
+  assert.equal(canon(merged.pay), canon(base.pay));
+});
+
+test("_rev is never merged as data; the remote one survives", () => {
+  const { merged } = mergeSections(
+    { checking: "250", _rev: "r1" },
+    { checking: "100", _rev: "r2" },
+    { checking: "100", _rev: "r1" });
+  assert.equal(merged._rev, "r2");
+});
+
+test("the field being typed in is protected, and their new bill still lands", () => {
+  const base = { checking: "100", bills: [] };
+  const { merged } = mergeSections(
+    { checking: "12", bills: [] },                                  // mid-typing "125"
+    { checking: "100", bills: [{ name: "Gym", amount: "40" }] }, base);
+  assert.equal(merged.checking, "12", "keystroke in progress was clobbered");
+  assert.equal(merged.bills.length, 1, "their new bill was lost");
+});
+
+test("a row deleted remotely and untouched locally stays deleted", () => {
+  const base = { bills: [{ name: "Gym", amount: "40" }], checking: "100" };
+  const { merged } = mergeSections(clone(base), { bills: [], checking: "100" }, base);
+  assert.deepEqual(merged.bills, []);
+});
+
+test("REGRESSION: identical sections keep object identity (1.19.1)", () => {
+  // `incoming` is parsed fresh; equal-but-different objects would orphan every row handler
+  // on screen and silently swallow the next keystroke
+  const bills = [{ name: "Rent", amount: "1200" }];
+  const { merged } = mergeSections(
+    { checking: "100", bills },
+    { checking: "900", bills: [{ name: "Rent", amount: "1200" }] },
+    { checking: "100", bills: [{ name: "Rent", amount: "1200" }] });
+  assert.equal(merged.bills, bills, "array replaced despite identical content");
+  assert.equal(merged.bills[0], bills[0], "item replaced despite identical content");
+  assert.equal(merged.checking, "900", "the genuinely-changed section still comes from remote");
+});
+
+test("sections we edited keep identity too (1.19.1)", () => {
+  const bills = [{ name: "Rent", amount: "1300" }];
+  const { merged } = mergeSections(
+    { bills, checking: "100" },
+    { bills: [{ name: "Rent", amount: "1200" }], checking: "100" },
+    { bills: [{ name: "Rent", amount: "1200" }], checking: "100" });
+  assert.equal(merged.bills, bills, "our edited array must be kept as-is");
+});
+
+test("only genuinely replaced lists are reported stale (1.19.1)", () => {
+  const base = { bills: [{ name: "Rent", amount: "1200" }], assets: [] };
+  const { stale } = mergeSections(clone(base),
+    { bills: [{ name: "Rent", amount: "1300" }], assets: [] }, base);
+  assert.deepEqual(stale, ["bills"], "only the replaced section should be flagged");
+});
+
+test("nothing is flagged stale when we keep our own edits (1.19.1)", () => {
+  const { stale } = mergeSections(
+    { bills: [{ name: "Rent", amount: "1300" }] },
+    { bills: [{ name: "Rent", amount: "1200" }] },
+    { bills: [{ name: "Rent", amount: "1200" }] });
+  assert.deepEqual(stale, []);
+});
+
+test("a reset (no base, cleared state) keeps the cleared values (1.18.1)", () => {
+  const cleared = { checking: "", bills: [], assets: [], creditScore: "" };
+  const { merged } = mergeSections(cleared, {
+    checking: "900",
+    bills: [{ name: "Rent", amount: "1200" }],
+    assets: [{ name: "Savings", balance: "500" }],
+    creditScore: "780"
+  }, null);
+  assert.equal(merged.checking, "");
+  assert.equal(merged.bills.length, 0);
+  assert.equal(merged.assets.length, 0);
+  assert.equal(merged.creditScore, "");
+});
