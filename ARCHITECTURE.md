@@ -156,7 +156,25 @@ you ever see it.
 
 Each step ships independently and leaves the app working.
 
-### Step 1 — Extract the pure core, add tests · **highest value, ~1 day**
+### Step 1 — Extract the pure core, add tests · **DONE (1.20.0)**
+
+Shipped as `js/core.js` + `tests/core.test.mjs`, 50 cases, run with `node --test`. Three
+things differed from the plan below and are worth recording:
+
+- **`mergeSections` moved into core too.** It wasn't in the original list, but it's the
+  code that produced two bugs in 1.19.1, and testing it by copy was exactly the drift
+  hazard this step exists to remove. `mergeRemote` in `index.html` is now just the side
+  effects — adopt the result, cache it, redraw.
+- **`node --test tests/` does not work** on Node 24 / Windows; it tries to resolve the
+  directory as a module. Bare `node --test` auto-discovers `**/*.test.mjs` and is what the
+  gate should use.
+- **ES modules can't load over `file://`.** Local testing now needs a static server, which
+  is a few lines of `node:http` with no dependencies. This also makes local testing more
+  faithful to production than opening the file directly ever was.
+
+The original plan follows, for the record.
+
+### Step 1 (as planned) — Extract the pure core, add tests · ~1 day
 
 Create `js/core.js` and move the pure functions verbatim: `num`, `money`, `stripTime`, the
 merged ISO helpers, `nextPayday`, `mostRecentPayday`, `currentPeriod`,
@@ -213,7 +231,7 @@ See below. Not speculatively.
 **Tooling: Node's built-in runner. Nothing else.**
 
 ```
-node --test tests/
+node --test
 ```
 
 No `package.json`, no npm install, no jest/vitest, no build step. `tests/core.test.mjs`
@@ -221,21 +239,23 @@ uses `node:test` and `node:assert/strict` and imports `js/core.js` directly — 
 are the interchange format that runs untranspiled in both the browser and Node, which is
 exactly why Step 1 uses them.
 
-> **Prerequisite: Node isn't currently installed on the dev machine** (nor Deno or Bun;
-> the `python` on PATH is a Microsoft Store stub). Step 1 needs it installed first.
+> **Node lives at `%LOCALAPPDATA%\Programs\nodejs`** (v24 LTS, unpacked from the official
+> zip and added to the user PATH). The MSI installer via `winget` hangs on an elevation
+> prompt that a non-interactive shell can't answer — the zip needs no admin and works.
 >
-> Until then, headless Edge is a working stand-in and needs nothing installed — it runs
-> the real JS engine against a test page:
+> **Browser-level checks** still use headless Edge, and now need the app served over http,
+> because ES modules are blocked over `file://`:
 >
 > ```
-> msedge --headless=new --disable-gpu --virtual-time-budget=5000 --dump-dom file:///…/test.html
+> node serve.mjs 8321                    # a few lines of node:http, no dependencies
+> msedge --headless=new --disable-gpu --virtual-time-budget=12000 --dump-dom http://127.0.0.1:8321/
 > ```
 >
-> It also doubles as a smoke test: loading `index.html` this way and checking that
-> JS-computed values are present in the dumped DOM (`#billsTotal` reads `$2,165.00` from
-> the default bills) proves the script parsed and `boot()` ran. That catches a syntax
-> error before a deploy does. Note `--dump-dom` writes to stdout, which PowerShell drops
-> unless you redirect it via `Start-Process -RedirectStandardOutput`.
+> That doubles as a smoke test: if JS-computed values are present in the dumped DOM
+> (`#billsTotal` reads `$2,165.00` from the default bills), the script parsed and `boot()`
+> ran. Catches a syntax or module-resolution error before a deploy does. Note `--dump-dom`
+> writes to stdout, which PowerShell drops unless redirected via
+> `Start-Process -RedirectStandardOutput`.
 
 **The first test file writes itself from the changelog.** Each shipped bug becomes a
 pinned regression case:

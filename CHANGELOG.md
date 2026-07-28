@@ -8,6 +8,13 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.20.0] — 2026-07-28
+
+### Changed
+- **The date and money logic now has tests.** Nothing about the app looks or behaves differently — this is groundwork. The calculations that decide when your bills are due, when payday falls, and what your next check comes to have moved into their own file, and there are now 50 automated checks that run against them in under a second.
+
+  This matters because that code is where nearly every bug in this changelog came from: a due day that turned "05" into the 15th while you typed, days 29–31 in months that don't have them, a take-home percentage over 100 multiplying a paycheck tenfold, typing a loan's due day taking a payment off the balance. Every one of those shipped and was found afterwards. Each is now a permanent test, so it can't come back — and the next change to that code gets checked before it reaches you rather than after.
+
 ## [1.19.1] — 2026-07-26
 
 ### Fixed
