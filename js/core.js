@@ -207,6 +207,79 @@ export function cardDueDate(card, today) {
   return billOccurrence({ due: card.dueDay }, today);
 }
 
+// ---------- period history ----------
+// What we projected for a payday, against what actually landed. Both figures already
+// exist — projectedAfter is written every recompute, and the rollover nudge is where the
+// real balance gets confirmed — so this only records the pair and reads it back.
+
+export var PERIOD_HISTORY_CAP = 48; // two years of semi-monthly periods
+
+/**
+ * Append one period's result, or correct an existing one. Pure — returns a new array.
+ *
+ * `p` (projected) may be null: acknowledging a payday the app never projected for is
+ * still worth recording, it just has no delta. `a` (actual) must be a real number —
+ * without a confirmed balance there is nothing to record, and inventing one would put a
+ * fabricated row in the history.
+ */
+export function recordPeriod(history, entry, cap) {
+  var list = Array.isArray(history) ? history.slice() : [];
+  if (!entry || typeof entry.d !== "string" || !entry.d) return list;
+  var a = Number(entry.a);
+  if (!isFinite(a)) return list;
+  var p = (entry.p === null || entry.p === undefined) ? null : Number(entry.p);
+  if (p !== null && !isFinite(p)) p = null;
+  var rec = { d: entry.d, p: p, a: a };
+  var at = -1;
+  for (var i = 0; i < list.length; i++) if (list[i] && list[i].d === entry.d) { at = i; break; }
+  if (at >= 0) list[at] = rec;  // re-confirming a payday corrects that row rather than adding a second
+  else list.push(rec);
+  var max = cap || PERIOD_HISTORY_CAP;
+  if (list.length > max) list = list.slice(list.length - max);
+  return list;
+}
+
+// How the period actually ended versus the projection. Negative means you landed short of
+// what we said. Null when there was no projection to compare against.
+export function periodDelta(e) {
+  if (!e || e.p === null || e.p === undefined) return null;
+  if (!isFinite(e.p) || !isFinite(e.a)) return null;
+  return e.a - e.p;
+}
+
+// Summary across the periods that have both figures, or null if none do yet.
+export function periodStats(history) {
+  var list = Array.isArray(history) ? history : [];
+  var deltas = [];
+  for (var i = 0; i < list.length; i++) {
+    var d = periodDelta(list[i]);
+    if (d !== null) deltas.push(d);
+  }
+  if (!deltas.length) return null;
+  var sum = 0, under = 0;
+  for (var j = 0; j < deltas.length; j++) {
+    sum += deltas[j];
+    if (deltas[j] < 0) under++;
+  }
+  return { n: deltas.length, avg: sum / deltas.length, under: under, last: deltas[deltas.length - 1] };
+}
+
+// Map a series to points in a W×H box, flat series centred rather than divided by zero.
+// Shared by both sparklines so they can't drift apart.
+export function sparkPoints(values, W, H, pad) {
+  var n = values.length;
+  if (!n) return [];
+  var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+  var span = (max - min) || 1;
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var x = n === 1 ? W : (i / (n - 1)) * W;
+    var y = pad + (1 - (values[i] - min) / span) * (H - pad * 2);
+    out.push([x, y]);
+  }
+  return out;
+}
+
 // ---------- paycheck projection ----------
 
 export var PERIODS_PER_YEAR = 24; // semi-monthly: the 15th and the last day

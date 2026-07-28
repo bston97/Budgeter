@@ -11,7 +11,8 @@ import {
   stripTime, isoToDate, dateToISO, todayISO,
   nextPayday, mostRecentPayday, currentPeriod, payPeriodStart, countWeekdays,
   occurrenceInMonth, occurrenceInPeriod, occurrenceAfter, mostRecentOccurrence,
-  billDate, billOccurrence, cardDueDate, projectedCheck
+  billDate, billOccurrence, cardDueDate, projectedCheck,
+  recordPeriod, periodDelta, periodStats, sparkPoints, PERIOD_HISTORY_CAP
 } from "../js/core.js";
 
 // month is 1-based here so the cases read like dates
@@ -396,4 +397,127 @@ test("a reset (no base, cleared state) keeps the cleared values (1.18.1)", () =>
   assert.equal(merged.bills.length, 0);
   assert.equal(merged.assets.length, 0);
   assert.equal(merged.creditScore, "");
+});
+
+// ----------------------------------------------------------------------- period history
+
+test("recordPeriod appends a period and leaves the input alone", () => {
+  const before = [];
+  const after = recordPeriod(before, { d: "2026-07-31", p: 1240.55, a: 1118.02 });
+  assert.equal(before.length, 0, "must be pure — the caller's array is untouched");
+  assert.deepEqual(after, [{ d: "2026-07-31", p: 1240.55, a: 1118.02 }]);
+});
+
+test("recordPeriod corrects a payday already recorded instead of duplicating it", () => {
+  let h = recordPeriod([], { d: "2026-07-31", p: 1200, a: 1100 });
+  h = recordPeriod(h, { d: "2026-08-15", p: 900, a: 950 });
+  h = recordPeriod(h, { d: "2026-07-31", p: 1200, a: 1075 });   // corrected a typo
+  assert.equal(h.length, 2, "same payday must not add a second row");
+  assert.equal(h[0].a, 1075, "the correction should win");
+  assert.equal(h[0].d, "2026-07-31", "and keep its position in the series");
+  assert.equal(h[1].d, "2026-08-15");
+});
+
+test("recordPeriod keeps a payday with no projection, with p null", () => {
+  const h = recordPeriod([], { d: "2026-07-31", p: null, a: 1118.02 });
+  assert.equal(h.length, 1);
+  assert.equal(h[0].p, null);
+  assert.equal(periodDelta(h[0]), null, "no projection means no delta to show");
+});
+
+test("recordPeriod refuses to invent an actual", () => {
+  // dismissing the nudge means we never learned the real balance
+  assert.deepEqual(recordPeriod([], { d: "2026-07-31", p: 1200, a: undefined }), []);
+  assert.deepEqual(recordPeriod([], { d: "2026-07-31", p: 1200, a: NaN }), []);
+  assert.deepEqual(recordPeriod([], { d: "2026-07-31", p: 1200 }), []);
+  assert.deepEqual(recordPeriod([], { d: "", p: 1200, a: 10 }), [], "a payday needs a date");
+  assert.deepEqual(recordPeriod([], null), []);
+});
+
+test("recordPeriod records a zero balance, which is real data", () => {
+  const h = recordPeriod([], { d: "2026-07-31", p: 1200, a: 0 });
+  assert.equal(h.length, 1);
+  assert.equal(h[0].a, 0);
+  assert.equal(periodDelta(h[0]), -1200);
+});
+
+test("recordPeriod caps the series and keeps the newest", () => {
+  let h = [];
+  for (let i = 1; i <= 60; i++) h = recordPeriod(h, { d: "2026-01-" + String(i).padStart(2, "0"), p: 100, a: 100 + i }, 48);
+  assert.equal(h.length, 48);
+  assert.equal(h[h.length - 1].a, 160, "the most recent entry must survive");
+  assert.equal(h[0].a, 113, "the oldest 12 are dropped");
+});
+
+test("PERIOD_HISTORY_CAP is the default cap", () => {
+  let h = [];
+  for (let i = 0; i < PERIOD_HISTORY_CAP + 5; i++) h = recordPeriod(h, { d: "d" + i, p: 1, a: 2 });
+  assert.equal(h.length, PERIOD_HISTORY_CAP);
+});
+
+test("periodDelta is actual minus projected, signed the intuitive way", () => {
+  assert.equal(periodDelta({ d: "x", p: 1200, a: 1100 }), -100, "landing short is negative");
+  assert.equal(periodDelta({ d: "x", p: 1200, a: 1350 }), 150, "landing over is positive");
+  assert.equal(periodDelta({ d: "x", p: 1200, a: 1200 }), 0);
+  assert.equal(periodDelta({ d: "x", p: null, a: 1100 }), null);
+  assert.equal(periodDelta(null), null);
+});
+
+test("periodStats averages only the periods that can be compared", () => {
+  const h = [
+    { d: "a", p: 1000, a: 900 },    // -100
+    { d: "b", p: null, a: 800 },    // no projection, excluded
+    { d: "c", p: 1000, a: 860 }     // -140
+  ];
+  const s = periodStats(h);
+  assert.equal(s.n, 2, "the entry without a projection must not count");
+  near(s.avg, -120);
+  assert.equal(s.under, 2);
+  near(s.last, -140);
+});
+
+test("periodStats is null until something is comparable", () => {
+  assert.equal(periodStats([]), null);
+  assert.equal(periodStats(null), null);
+  assert.equal(periodStats([{ d: "a", p: null, a: 500 }]), null, "actuals alone are not a comparison");
+});
+
+test("periodStats counts periods over projection separately", () => {
+  const s = periodStats([
+    { d: "a", p: 1000, a: 1100 },
+    { d: "b", p: 1000, a: 900 },
+    { d: "c", p: 1000, a: 1000 }
+  ]);
+  assert.equal(s.n, 3);
+  assert.equal(s.under, 1, "zero is not under");
+  near(s.avg, 0);
+});
+
+test("sparkPoints spans the box and inverts y so bigger is higher", () => {
+  const pts = sparkPoints([0, 10], 300, 48, 4);
+  assert.equal(pts.length, 2);
+  assert.equal(pts[0][0], 0);
+  assert.equal(pts[1][0], 300);
+  assert.ok(pts[0][1] > pts[1][1], "the larger value must sit higher on screen");
+});
+
+test("sparkPoints handles a flat series without dividing by zero", () => {
+  const pts = sparkPoints([5, 5, 5], 300, 48, 4);
+  assert.equal(pts.length, 3);
+  for (const p of pts) assert.ok(isFinite(p[1]), "flat series produced a non-finite y");
+});
+
+test("sparkPoints handles one point and none at all", () => {
+  assert.deepEqual(sparkPoints([], 300, 48, 4), []);
+  const one = sparkPoints([7], 300, 48, 4);
+  assert.equal(one.length, 1);
+  assert.equal(one[0][0], 300, "a lone point sits at the right edge, where 'now' is");
+});
+
+test("sparkPoints keeps every point inside the padded box", () => {
+  const pts = sparkPoints([-40, 0, 125, 3], 300, 48, 4);
+  for (const [x, y] of pts) {
+    assert.ok(x >= 0 && x <= 300, `x ${x} out of box`);
+    assert.ok(y >= 4 && y <= 44, `y ${y} outside the padded box`);
+  }
 });

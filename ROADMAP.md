@@ -25,67 +25,29 @@ and not. They're prioritized accordingly.
 
 ## Next up
 
-### Period history & actuals
+### Let history sharpen the projection
 
-**The app projects a runway every period but never checks itself.** It tells you what's
-left before payday, and after 1.16.0 it projects a whole period ahead — but once that
-payday arrives the projection is thrown away and a fresh one takes its place. Nothing
-accumulates. The app can't tell you *"you typically land about $120 under what we
-projected,"* and you can't see whether your periods are trending better or worse. Every
-period starts from zero knowledge, which means the estimates never get sharper no matter
-how long you use it.
+Period history shipped in 1.21.0: the app now records what it projected for each payday
+against what actually landed, and shows the gap. The follow-on is to *use* it. If you
+consistently come in $120 under projection, the app could offer that as a suggested buffer
+rather than leaving you to notice the pattern yourself — the difference between a report
+and a tool that gets better the longer you use it.
 
-The good news: **both halves of the comparison already exist.** Nothing new has to be
-asked of you.
+`periodStats()` in `js/core.js` already returns the average, the count, and how many
+periods came in under. What's undecided is where that figure belongs on screen, and
+whether it adjusts the projection automatically or stays advisory. Advisory is the safer
+default: silently shading the headline number would make it harder to trust, not easier.
 
-- `state.projectedAfter` — written near the end of `recompute()` —
-  already stores what the app expected your balance to be after a given payday, keyed by
-  that payday's date. It was added for the rollover nudge in 1.17.0.
-- `ackRollover()` is the moment you confirm your *real* post-payday
-  bank balance. That's the actual.
+**Worth waiting for real data before designing it.** A rule tuned against three periods is
+tuned against noise. Six to eight periods in, the shape of your own error will be obvious
+and the design question answers itself.
 
-So the projected figure and the true figure meet in one place, on a date the app already
-tracks. The work is recording the pair and drawing it.
-
-**Shape.** A `periodHistory` array on state, one entry per payday, following the
-`nwHistory` precedent exactly (`recordNetWorth()`): short keys,
-appended rather than rewritten, capped in length so it can't grow without bound, and
-guarded in `migrate()` with an `Array.isArray` check so states saved before the feature
-existed load clean.
-
-**Display.** A block on the Payday tab listing the last several periods — projected,
-actual, and the difference — plus a sparkline of the delta over time, reusing the inline
-SVG approach in `renderNetWorthTrend()` rather than adding a charting
-dependency. It stays hidden until there are at least two periods to compare, the same way
-`nwTrend` hides itself below two points; one lonely row isn't a trend and shouldn't look
-like one.
-
-**Edge cases worth getting right:**
-
-- A payday acknowledged with no stored projection (you set the app up mid-period, or the
-  projection was for a different date). Record the actual, show no delta — don't invent a
-  comparison.
-- Editing your checking balance after you've already acknowledged the payday. The
-  recorded actual is what you confirmed at the time; a later correction shouldn't silently
-  rewrite history, but it also shouldn't be stranded if you're fixing a typo.
-- First run must stay retroactively silent. `migrate()` already seeds `rolloverSeen` to
-  the most recent payday so a brand-new setup is never questioned
-  about a payday it wasn't around for — period history has to respect the same rule and
-  not backfill entries it never observed.
 
 ---
 
 ## Later
 
 Worth doing, not yet designed.
-
-**Let history sharpen the projection.** The natural follow-on to period history above.
-Once there are several periods of projected-vs-actual on file, the app can stop merely
-reporting the gap and start using it: if you consistently land $120 under projection, it
-can offer that as a suggested buffer rather than making you notice the pattern yourself.
-That's the difference between a report and a tool that gets better the longer you use it
-— worth keeping in mind while building the history feature, so the recorded shape
-supports it later.
 
 **Subscriptions.** A section of their own, for any recurring payment that doesn't fit the
 categories the app already has. Bills are monthly and nothing else — a bill's `due` is a
@@ -199,25 +161,20 @@ Generalizing it means three pieces:
 Way down the line, and worth designing carefully rather than quickly — this is the one
 feature where a mistake exposes one user's data to another.
 
-**A test safety net.** There are no tests at all, and the changelog is the argument for
-them. Look at what's already been fixed after the fact: a due-day field that turned "05"
-into the 15th while you typed (1.8.2), days 29–31 that don't exist in every month
-(1.8.2), a take-home percentage over 100 multiplying a paycheck tenfold (1.8.1), typing a
-loan's due day registering as a missed payment and taking money off the balance (1.14.1),
-a projection clobbered before the thing that displayed it could read it (1.17.1). Every
-one is date math or input clamping, and every one shipped before it was caught.
+**Tests for the parts that aren't pure.** The pure core got covered in 1.20.0 — 65 cases
+in `tests/core.test.mjs` run with `node --test`, each named for the release whose bug it
+pins. That was the highest-risk code and it's done.
 
-That's the highest-risk code in the app and the easiest kind to test — `nextPayday()`,
-`mostRecentPayday()`, `currentPeriod()`, `occurrenceInPeriod()`, `billOccurrence()`,
-`countWeekdays()`, and `projectedCheck()` are all pure functions of a date and some state.
-Pin them against known dates — month ends, February, EOM bills, a payday landing on the
-period boundary — and this whole class of bug stops reaching you.
+What's still untested is everything that touches the DOM or the network: the renderers,
+the event wiring, and the sync layer's side effects (as opposed to `mergeSections`, which
+is now pure and covered). Those are currently checked by driving headless Edge against a
+local server and asserting on the dumped DOM, which works but lives in the scratchpad
+rather than the repo, so it isn't a gate anyone else could run.
 
-The obstacle is that the app is one HTML file with the logic inside a `<script>` tag and
-an IIFE, so nothing is importable and there's no test runner. [ARCHITECTURE.md](ARCHITECTURE.md)
-answers this: extract the pure functions into `js/core.js` as a native ES module and run
-`node --test` against it — no build step, no dependencies. It's Step 1 there, and the
-single highest-value change on the board.
+Making that durable is worth doing eventually, but it's a much smaller win than Step 1
+was: the bug record is overwhelmingly date maths and clamping, not rendering. Worth
+revisiting if render bugs start showing up in the changelog.
+
 
 ---
 
