@@ -1638,7 +1638,7 @@ import {
 
       var isEom = String(c.dueDay).toUpperCase() === "EOM";
       var dueWrap = el("div", "due-cell");
-      var due = el("input", null, { type: "number", min: "1", max: "28", placeholder: "—", title: "Payment due day (1–28), or EOM" });
+      var due = el("input", null, { type: "text", inputmode: "numeric", pattern: "[0-9]*", maxlength: "2", placeholder: "—", title: "Payment due day (1–28), or EOM" });
       due.value = isEom ? "" : (c.dueDay || "");
       due.disabled = isEom;
       due.addEventListener("input", function () { c.dueDay = due.value; save(); renderCardPayments(); recompute(); });
@@ -1703,7 +1703,7 @@ import {
 
       var isEom = String(l.dueDay).toUpperCase() === "EOM";
       var dueWrap = el("div", "due-cell ln-due");
-      var due = el("input", null, { type: "number", min: "1", max: "28", placeholder: "—", title: "Payment due day (1–28), or EOM" });
+      var due = el("input", null, { type: "text", inputmode: "numeric", pattern: "[0-9]*", maxlength: "2", placeholder: "—", title: "Payment due day (1–28), or EOM" });
       due.value = isEom ? "" : (l.dueDay || "");
       due.disabled = isEom;
       function commitDue() {
