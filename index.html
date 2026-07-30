@@ -2335,28 +2335,47 @@ import {
     var box = document.getElementById("nextTimeline");
     var wrap = document.getElementById("nextPeriod");
     if (!box || !wrap) return;
+    var today = new Date();
     var payday2 = nextPayday(payday); // strictly after payday, so this is the following one
+    var start = new Date(payday.getFullYear(), payday.getMonth(), payday.getDate() + 1);
+    var period2 = { start: start, end: payday2 };
     var items = upcoming.filter(function (u) { return u.when > payday && u.when <= payday2; })
                         .sort(function (a, b) { return a.when - b.when; });
+
+    // A card paid now for a due date that falls in the next period is "settled" against
+    // that period, not this one — so it's absent from `upcoming` (which only tracks
+    // settlement against the current period) and would otherwise just vanish here instead
+    // of showing that it's already handled.
+    state.cards.forEach(function (c) {
+      if (!c.dueDay) return;
+      var due2 = cardDueDate(c, today);
+      if (!due2 || due2 <= payday || due2 > payday2) return;
+      var place2 = cardPaymentPlacement(c, due2, period2, today);
+      if (place2 && place2.settled) {
+        items.push({ name: (c.name || "Card") + " payment", amount: place2.amount, when: due2, paid: true, paidOn: place2.paidOn });
+      }
+    });
+    items.sort(function (a, b) { return a.when - b.when; });
 
     var projRow = document.getElementById("npProjectedRow");
     if (!items.length) { wrap.hidden = true; if (projRow) projRow.hidden = true; return; }
     wrap.hidden = false;
 
-    var start = new Date(payday.getFullYear(), payday.getMonth(), payday.getDate() + 1);
     setText("npRange", fmtShort(dateToISO(start)) + " – " + fmtShort(dateToISO(payday2)));
 
     box.innerHTML = "";
     var total = 0;
     items.forEach(function (u) {
-      total += u.amount;
-      var item = el("div", "tl-item");
+      if (!u.paid) total += u.amount; // already paid — the money's gone from checking already
+      var item = el("div", "tl-item" + (u.paid ? " paid" : ""));
       var date = el("div", "tl-date");
       date.innerHTML = '<div class="d">' + u.when.getDate() + '</div><div class="m">' + MON[u.when.getMonth()] + '</div>';
       var mid = el("div");
       var moneyIn = u.amount < 0;
-      mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + '</div>' +
-                      '<div class="tl-sub">' + DAY[u.when.getDay()] + '</div>';
+      var pill = u.paid ? ' <span class="pill paid">paid</span>' : '';
+      var sub = u.paid ? ("paid " + MON[u.paidOn.getMonth()] + " " + u.paidOn.getDate()) : DAY[u.when.getDay()];
+      mid.innerHTML = '<div class="tl-name">' + escapeHtml(u.name) + pill + '</div>' +
+                      '<div class="tl-sub">' + sub + '</div>';
       var amt = el("div", "tl-amt" + (moneyIn ? " in" : ""));
       amt.textContent = (moneyIn ? "+" : "-") + money(Math.abs(u.amount));
       item.appendChild(date); item.appendChild(mid); item.appendChild(amt);
