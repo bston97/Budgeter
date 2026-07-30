@@ -1,5 +1,5 @@
 /* Penny Pincher service worker — network-first so a deploy always wins, cache only as an offline fallback. */
-var CACHE = "runway-v6";
+var CACHE = "runway-v7";
 var SHELL = ["./", "./index.html", "./js/core.js", "./manifest.json", "./mark.png",
              "./favicon-32.png", "./favicon-64.png", "./apple-touch-icon.png",
              "./icon-192.png", "./icon-512.png"];
@@ -8,7 +8,15 @@ var LIB = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 self.addEventListener("install", function (e) {
   e.waitUntil(
     caches.open(CACHE)
-      .then(function (c) { return c.addAll(SHELL); })
+      .then(function (c) {
+        // The sign-in library is fetched separately, and deliberately not with addAll: that
+        // is all-or-nothing, so a CDN blip would take the whole offline shell down with it.
+        // Install first without it, then try to add it. Without it cached, an app installed
+        // and later opened offline can load the shell but never reach the sign-in screen.
+        return c.addAll(SHELL).then(function () {
+          return c.add(LIB).catch(function () {}); // best effort; the fetch handler caches it later anyway
+        });
+      })
       .then(function () { return self.skipWaiting(); })
   );
 });

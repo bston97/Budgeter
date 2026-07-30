@@ -22,6 +22,8 @@ Live app: https://bston97.github.io/Budgeter/
 
 - The name and amount boxes in every row now announce themselves properly to a screen reader instead of reading as an unlabelled text field.
 
+- **An installed app can reach the sign-in screen offline.** The sign-in library was only cached once it had been fetched at least once, so installing the app and first opening it without a connection left you stuck on "Couldn't load the sign-in service". It's now fetched at install time — separately from the rest, so a hiccup fetching it can't take the whole offline copy down with it.
+
 ### Changed
 - Removed `renderAccounts()`, dead since the card and loan rows got their own renderers, plus its leftover styles and two unused imports. An installed app is no longer locked to portrait, which was fighting the two-column layout on a tablet.
 - Docs corrected where they'd drifted: the test count, a fix recorded as still outstanding, and two commands that don't work as written.
