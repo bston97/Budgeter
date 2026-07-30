@@ -163,6 +163,31 @@
   .theme-btn:hover { color: var(--ink); border-color: var(--accent); }
 
   /* Tabs */
+  /* "figures last entered" — above the tabs because it's true of the whole app, not one tab */
+  .lastrun {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 14px; padding: 9px 14px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .lr-text { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .lr-label { font-size: 12px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .06em; }
+  .lr-date { font-size: 14px; font-weight: 650; color: var(--ink); }
+  .lr-date.stale { color: var(--warn); }
+  .lr-prev { font-size: 12px; color: var(--ink-faint); font-weight: 500; }
+  .lr-prev[hidden] { display: none; }
+  /* phone: the label and date already fill a line, so give "before that" its own */
+  @media (max-width: 560px) {
+    .lr-label { font-size: 11px; }
+    .lr-prev { flex-basis: 100%; }
+  }
+  .lr-btn {
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-soft);
+    font-family: inherit; font-size: 13px; font-weight: 650; white-space: nowrap;
+    padding: 7px 12px; border-radius: 8px; cursor: pointer;
+  }
+  .lr-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .lr-btn:disabled { opacity: .55; cursor: default; border-color: var(--line); color: var(--ink-faint); background: var(--surface-2); }
+
   .tabs {
     display: flex; gap: 4px; margin-bottom: 22px;
     border-bottom: 1px solid var(--line); position: relative;
@@ -752,6 +777,16 @@
       <span class="pw-msg" id="pwMsg"></span>
     </div>
 
+    <!-- Sits outside every panel on purpose: it's the same fact whichever tab you're on. -->
+    <div class="lastrun" id="lastRunBar">
+      <div class="lr-text">
+        <span class="lr-label">Figures last entered</span>
+        <span class="lr-date" id="lrDate">—</span>
+        <span class="lr-prev" id="lrPrev"></span>
+      </div>
+      <button class="lr-btn" id="lrBtn" type="button">Mark entered today</button>
+    </div>
+
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-payday" aria-selected="true" aria-controls="panel-payday" type="button">
         Payday<span class="sub">money to next check</span>
@@ -1233,6 +1268,8 @@ import {
       checking: "",
       creditScore: "",
       creditDate: "",
+      lastRun: "",   // the day you last confirmed everything on screen is current
+      prevRun: "",   // the one before that, so the gap between check-ins is visible
       oneoffs: [],
       pay: { mode: "hourly", rate: "", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "", netCheck: "" },
       nwHistory: [],
@@ -1297,6 +1334,9 @@ import {
     s.settle = normSettle(s.settle);
     if (typeof s.creditScore !== "string") s.creditScore = s.creditScore != null ? String(s.creditScore) : "";
     if (typeof s.creditDate !== "string") s.creditDate = s.creditDate != null ? String(s.creditDate) : "";
+    ["lastRun", "prevRun"].forEach(function (k) {
+      if (typeof s[k] !== "string") s[k] = s[k] != null ? String(s[k]) : "";
+    });
     if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
     // entries predate the in/out switch and were all money leaving checking
     s.oneoffs.forEach(function (o) { if (o.dir !== "in" && o.dir !== "out") o.dir = "out"; });
@@ -1706,6 +1746,41 @@ import {
     n += state.oneoffs.length;
     state.oneoffs = [];
     return n;
+  }
+  // "Figures last entered" — the day you last confirmed what's on screen matches real life.
+  // Nothing sets it automatically: the app can't tell a balance you retyped from one you
+  // left alone, so this only means something if it's you saying so.
+  function renderLastRun() {
+    var dateEl = document.getElementById("lrDate");
+    var prevEl = document.getElementById("lrPrev");
+    var btn = document.getElementById("lrBtn");
+    if (!dateEl || !prevEl || !btn) return;
+    var today = todayISO();
+    var isToday = state.lastRun === today;
+
+    if (!state.lastRun) {
+      dateEl.textContent = "not yet";
+      dateEl.className = "lr-date stale";
+    } else {
+      var days = Math.round((stripTime(new Date()) - stripTime(isoToDate(state.lastRun))) / 86400000);
+      dateEl.textContent = fmtISO(state.lastRun) +
+        (days <= 0 ? " · today" : days === 1 ? " · yesterday" : " · " + days + " days ago");
+      // a period is at most 16 days, so past that you're reading last cycle's numbers
+      dateEl.className = "lr-date" + (days > 16 ? " stale" : "");
+    }
+    prevEl.textContent = state.prevRun ? "before that, " + fmtISO(state.prevRun) : "";
+    prevEl.hidden = !state.prevRun; // an empty span still takes a line once the bar wraps
+    btn.disabled = isToday;
+    btn.textContent = isToday ? "Marked today" : "Mark entered today";
+  }
+  // Today becomes the latest run and the old one steps back a slot. Doing this twice in a
+  // day must not push the real previous date out, so a repeat is a no-op.
+  function markRunToday() {
+    var today = todayISO();
+    if (state.lastRun === today) return false;
+    state.prevRun = state.lastRun;
+    state.lastRun = today;
+    return true;
   }
   function fmtShort(iso) {
     var p = String(iso).split("-");
@@ -2399,6 +2474,7 @@ import {
     recomputeNetWorth();
     updateCardPayTotals();
     renderRollover(); // so the nudge appears even if the tab stayed open across a payday
+    renderLastRun();  // same reason: "today" stops being today if the tab is left open
     renderPeriodHistory();
   }
 
@@ -3111,6 +3187,7 @@ import {
   // ---------- render everything from current state ----------
   function renderAll() {
     clearOldOneoffs();
+    renderLastRun();
     document.getElementById("checking").value = state.checking || "";
     document.getElementById("creditInput").value = state.creditScore || "";
     document.getElementById("creditDate").value = state.creditDate || "";
@@ -3272,6 +3349,13 @@ import {
     });
     document.getElementById("nameB").addEventListener("input", function () {
       S().nameB = this.value; saveSettle(); recomputeSettle();
+    });
+    document.getElementById("lrBtn").addEventListener("click", function () {
+      if (!markRunToday()) return;
+      renderLastRun();
+      save();
+      pennySay(state.prevRun ? "Marked. Last time was " + fmtISO(state.prevRun) + "."
+                             : "Marked. I'll keep track from here.");
     });
     // The only way out of the app. Everything already serializes for the cloud, so a backup
     // is that same payload plus the shared ledger, which lives in its own row.

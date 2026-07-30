@@ -8,6 +8,15 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.28.0] — 2026-07-30
+
+### Added
+- **"Figures last entered", above the tabs.** A bar showing the day you last confirmed the numbers on screen match real life, the run before that, and a button to stamp today. It sits outside the tabs on purpose — it's the same fact whichever tab you're on.
+
+  The date reads plainly — *Jul 30, 2026 · today*, *· yesterday*, *· 6 days ago* — and turns amber once it's more than a full pay period old, since past that you're reading last cycle's numbers. Marking twice in one day does nothing, so a stray second click can't push the real previous date out of view.
+
+  Nothing sets this for you. The app can't tell a balance you retyped from one you left alone, so it only means something if it's you saying so.
+
 ## [1.27.0] — 2026-07-30
 
 ### Added
