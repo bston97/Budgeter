@@ -429,6 +429,8 @@
   .cp-due { display: block; font-size: 12px; color: var(--ink-faint); font-weight: 500; }
   .cp-due.soon { color: var(--warn); font-weight: 700; }
   .cp-due.next { color: var(--ink-faint); }
+  .cp-paid { display: block; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .cp-paid[hidden] { display: none; } /* the class would otherwise beat the UA hidden rule */
   .cardpay-row .amt input { padding-left: 20px; font-variant-numeric: tabular-nums; }
   .cp-fixed { text-align: right; font-weight: 650; font-size: 14px; color: var(--ink-soft); padding-right: 2px; }
   .cp-after { grid-column: 1 / -1; font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-top: -2px; }
@@ -1149,7 +1151,7 @@ import {
   stripTime, isoToDate, dateToISO, todayISO,
   nextPayday, mostRecentPayday, currentPeriod, payPeriodStart, countWeekdays,
   occurrenceInMonth, occurrenceInPeriod, occurrenceAfter, mostRecentOccurrence,
-  billDate, billOccurrence, cardDueDate, projectedCheck,
+  billDate, billOccurrence, cardDueDate, cardPaymentPlacement, projectedCheck,
   recordPeriod, periodDelta, periodStats, sparkPoints, PERIOD_HISTORY_CAP
 } from "./js/core.js";
 
@@ -1210,7 +1212,7 @@ import {
     if (!Array.isArray(s.cards)) s.cards = [{ name: "Visa", balance: "" }];
     s.cards.forEach(function (c) {
       if (!c.id) c.id = uid();
-      ["dueDay", "payAmount", "payFor"].forEach(function (k) {
+      ["dueDay", "payAmount", "payFor", "paidOn"].forEach(function (k) {
         if (typeof c[k] !== "string") c[k] = c[k] != null ? String(c[k]) : "";
       });
       var dn = parseInt(c.dueDay, 10);
@@ -1559,12 +1561,16 @@ import {
     return changed;
   }
 
-  // once a card's due date has passed, drop the amount so next cycle starts blank
+  // Once a card's due date has passed, drop the amount so next cycle starts blank. A payment
+  // made early is kept until then on purpose — that is what lets the period holding the due
+  // date show nothing owing and name what was already paid.
   function clearOldCardPayments() {
     var t = stripTime(new Date()), changed = false;
     state.cards.forEach(function (c) {
       if (!c.payFor) return;
-      if (t > stripTime(isoToDate(c.payFor))) { c.payAmount = ""; c.payFor = ""; changed = true; }
+      if (t > stripTime(isoToDate(c.payFor))) {
+        c.payAmount = ""; c.payFor = ""; c.paidOn = ""; changed = true;
+      }
     });
     return changed;
   }
@@ -1758,6 +1764,7 @@ import {
     cardPayRows = [];
     var today = new Date();
     var payday = nextPayday(today);
+    var period = currentPeriod(today);
     var due = [];
     state.cards.forEach(function (c) { if (c.dueDay) due.push({ c: c, loan: false, when: cardDueDate(c, today) }); });
     state.loans.forEach(function (l) { if (l.dueDay) due.push({ c: l, loan: true, when: cardDueDate(l, today) }); });
@@ -1771,6 +1778,10 @@ import {
       var daysAway = Math.round((stripTime(when) - stripTime(today)) / 86400000);
       // "next period" only if it really lands before the payday after this one
       var inNextPeriod = !beforePay && when <= nextPayday(payday);
+      // paid in an earlier period: this period owes nothing, so the row starts empty and
+      // names what already went out instead of asking for the money a second time
+      var place = isLoan ? null : cardPaymentPlacement(c, when, period, today);
+      var settled = !!(place && place.settled);
 
       var row = el("div", "cardpay-row");
       var nameWrap = el("div", "cp-name");
@@ -1789,14 +1800,35 @@ import {
         fixed.title = "Fixed payment, set on the Net worth tab";
         row.appendChild(fixed);
       } else {
+        // the earlier payment, kept whole so backing out of a new amount restores it
+        var done = settled ? { payAmount: c.payAmount, payFor: c.payFor, paidOn: c.paidOn } : null;
+        var paidLbl = null;
+        if (settled) {
+          paidLbl = el("span", "cp-paid");
+          paidLbl.textContent = "paid " + money(place.amount) + " · " +
+            MON[place.paidOn.getMonth()] + " " + place.paidOn.getDate();
+          nameWrap.appendChild(paidLbl);
+        }
         var amtWrap = el("div", "amt");
         var cur = el("span", "cur"); cur.textContent = "$";
         var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
-        amt.value = c.payAmount || "";
+        amt.value = settled ? "" : (c.payAmount || "");
+        var rowRef = { c: c, loan: false, settled: settled };
         amt.addEventListener("input", function () {
-          c.payAmount = amt.value;
-          // tie this amount to the due date it was entered for, so it clears once that passes
-          c.payFor = amt.value === "" ? "" : dateToISO(when);
+          var blank = amt.value === "";
+          if (blank && done) {
+            c.payAmount = done.payAmount; c.payFor = done.payFor; c.paidOn = done.paidOn;
+          } else {
+            // tie the amount to the due date it covers, so it clears once that passes, and to
+            // the day it was typed, which is the day the money actually left
+            c.payAmount = amt.value;
+            c.payFor = blank ? "" : dateToISO(when);
+            c.paidOn = blank ? "" : todayISO();
+          }
+          // a new amount replaces the earlier payment, so its note steps aside — toggled in
+          // place because a re-render would take the focus away mid-keystroke
+          rowRef.settled = !!done && blank;
+          if (paidLbl) paidLbl.hidden = !rowRef.settled;
           recompute();
         });
         amtWrap.appendChild(cur); amtWrap.appendChild(amt);
@@ -1805,7 +1837,8 @@ import {
 
       var afterEl = el("div", "cp-after");
       row.appendChild(afterEl);
-      cardPayRows.push({ c: c, afterEl: afterEl, loan: isLoan });
+      if (isLoan) cardPayRows.push({ c: c, afterEl: afterEl, loan: true, settled: false });
+      else { rowRef.afterEl = afterEl; cardPayRows.push(rowRef); }
       box.appendChild(row);
     });
 
@@ -1816,7 +1849,8 @@ import {
   function updateCardPayTotals() {
     var total = 0;
     cardPayRows.forEach(function (r) {
-      var c = r.c, amt = r.loan ? num(c.payment) : num(c.payAmount);
+      // a settled row's money left in an earlier period — the balance already reflects it
+      var c = r.c, amt = r.settled ? 0 : r.loan ? num(c.payment) : num(c.payAmount);
       total += amt;
       if (amt > 0 && String(c.balance).trim() !== "") {
         var after = num(c.balance) - amt;
@@ -2140,11 +2174,12 @@ import {
       upcoming.push({ name: o.desc || "Entry", amount: signed, when: when, beforePay: true, oneOff: true });
     });
     state.cards.forEach(function (c) {
-      var amt = num(c.payAmount);
-      if (amt <= 0 || !c.dueDay) return;
-      var when = cardDueDate(c, today);
-      if (!when) return;
-      upcoming.push({ name: (c.name || "Card") + " payment", amount: amt, when: when, beforePay: when <= payday, cardPay: true });
+      if (!c.dueDay) return;
+      var place = cardPaymentPlacement(c, cardDueDate(c, today), period, today);
+      // settled = paid in an earlier period, so the money is long gone from checking
+      if (!place || place.settled) return;
+      upcoming.push({ name: (c.name || "Card") + " payment", amount: place.amount, when: place.when,
+                      beforePay: place.when <= payday, cardPay: true });
     });
     state.loans.forEach(function (l) {
       var amt = num(l.payment);
@@ -2930,7 +2965,7 @@ import {
       flagNewRow(); renderOneoffs(); recompute();
     });
     document.getElementById("addCard").addEventListener("click", function () {
-      state.cards.push({ name: "", balance: "", id: uid(), dueDay: "", payAmount: "", payFor: "" });
+      state.cards.push({ name: "", balance: "", id: uid(), dueDay: "", payAmount: "", payFor: "", paidOn: "" });
       flagNewRow(); renderCards(); renderCardPayments(); recompute();
     });
     document.getElementById("addLoan").addEventListener("click", function () {

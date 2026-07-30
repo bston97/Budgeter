@@ -207,6 +207,36 @@ export function cardDueDate(card, today) {
   return billOccurrence({ due: card.dueDay }, today);
 }
 
+/**
+ * Where a card payment's money actually lands, and whether this period still owes it.
+ *
+ * An amount you type is money leaving in the period you typed it in — even when the due
+ * date it covers is in a later period, which is exactly what happens when you pay two
+ * cards on the same day and one of them isn't due until next cycle. Once that period has
+ * ended the payment is history: the period holding the due date must show nothing owing
+ * rather than asking for the money a second time.
+ *
+ * `card.paidOn` is the ISO date the amount was entered. Records written before it existed
+ * have none, and keep the old meaning — a plan sitting on the due date — so a stale entry
+ * can't jump periods on its own.
+ *
+ * @returns {null|{amount:number, paidOn:Date|null, when:Date, settled:boolean}}
+ *   `when` is the date the money leaves; `settled` means it left in an earlier period and
+ *   must not be charged again. Null when there is no payment to place.
+ */
+export function cardPaymentPlacement(card, due, period, today) {
+  var amount = num(card.payAmount);
+  if (amount <= 0) return null;
+  if (!card.paidOn) return due ? { amount: amount, paidOn: null, when: due, settled: false } : null;
+
+  var paidOn = stripTime(isoToDate(card.paidOn));
+  if (paidOn < stripTime(period.start)) return { amount: amount, paidOn: paidOn, when: paidOn, settled: true };
+  // still ahead of us and inside this period: leave it on the due date, where the running
+  // balance expects it. Anything else already left the account the day it was entered.
+  var onDue = due && due >= paidOn && due <= stripTime(period.end);
+  return { amount: amount, paidOn: paidOn, when: onDue ? due : paidOn, settled: false };
+}
+
 // ---------- period history ----------
 // What we projected for a payday, against what actually landed. Both figures already
 // exist — projectedAfter is written every recompute, and the rollover nudge is where the

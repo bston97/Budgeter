@@ -11,7 +11,7 @@ import {
   stripTime, isoToDate, dateToISO, todayISO,
   nextPayday, mostRecentPayday, currentPeriod, payPeriodStart, countWeekdays,
   occurrenceInMonth, occurrenceInPeriod, occurrenceAfter, mostRecentOccurrence,
-  billDate, billOccurrence, cardDueDate, projectedCheck,
+  billDate, billOccurrence, cardDueDate, cardPaymentPlacement, projectedCheck,
   recordPeriod, periodDelta, periodStats, sparkPoints, PERIOD_HISTORY_CAP
 } from "../js/core.js";
 
@@ -149,6 +149,76 @@ test("billOccurrence on the due day itself returns today, not next month", () =>
 test("cardDueDate mirrors bills and rejects a blank day", () => {
   assert.equal(iso(cardDueDate({ dueDay: "12" }, D(2026, 7, 5))), "2026-07-12");
   assert.equal(cardDueDate({ dueDay: "" }, D(2026, 7, 5)), null);
+});
+
+// ------------------------------------------------------- card payments land in the period
+// they were typed in (1.23.0). Scenario throughout: paying two cards on the same day when
+// only one of them is due this cycle.
+
+test("a payment typed for a due date later this period stays on the due date (1.23.0)", () => {
+  const today = D(2026, 7, 2);
+  const p = cardPaymentPlacement({ payAmount: "200", paidOn: "2026-07-02" },
+                                 D(2026, 7, 5), currentPeriod(today), today);
+  assert.equal(iso(p.when), "2026-07-05", "still ahead and inside this period — leave it where it falls");
+  assert.equal(p.settled, false);
+});
+
+test("a payment for a due date in a later period lands today instead (1.23.0)", () => {
+  const today = D(2026, 7, 29); // period is Jul 16–31; the card is not due until Aug 20
+  const p = cardPaymentPlacement({ payAmount: "200", paidOn: "2026-07-29" },
+                                 D(2026, 8, 20), currentPeriod(today), today);
+  assert.equal(iso(p.when), "2026-07-29", "the money left the day it was typed, not next month");
+  assert.equal(p.settled, false, "it must still be charged to the period it was typed in");
+});
+
+test("paying after the due date has passed lands today, not on next month's date (1.23.0)", () => {
+  const today = D(2026, 7, 22);
+  const p = cardPaymentPlacement({ payAmount: "150", paidOn: "2026-07-22" },
+                                 D(2026, 8, 20), currentPeriod(today), today);
+  assert.equal(iso(p.when), "2026-07-22");
+  assert.equal(p.settled, false);
+});
+
+test("the period holding the due date sees the payment as settled (1.23.0)", () => {
+  const today = D(2026, 8, 18); // period Aug 16–31, where the Aug 20 due date falls
+  const p = cardPaymentPlacement({ payAmount: "200", paidOn: "2026-07-29" },
+                                 D(2026, 8, 20), currentPeriod(today), today);
+  assert.equal(p.settled, true, "paid in an earlier period — this one must not charge it again");
+  assert.equal(iso(p.paidOn), "2026-07-29", "and must be able to name when it went out");
+  near(p.amount, 200);
+});
+
+test("a payment made earlier in the same period is not settled (1.23.0)", () => {
+  const today = D(2026, 7, 30);
+  const p = cardPaymentPlacement({ payAmount: "200", paidOn: "2026-07-20" },
+                                 D(2026, 8, 20), currentPeriod(today), today);
+  assert.equal(p.settled, false, "same period, so the money is still this period's business");
+  assert.equal(iso(p.when), "2026-07-20");
+});
+
+test("a record with no paidOn keeps the old due-date meaning (1.23.0)", () => {
+  const today = D(2026, 7, 29);
+  const p = cardPaymentPlacement({ payAmount: "200" }, D(2026, 8, 20), currentPeriod(today), today);
+  assert.equal(iso(p.when), "2026-08-20", "data written before paidOn existed must not jump periods");
+  assert.equal(p.settled, false);
+});
+
+test("nothing to place without an amount (1.23.0)", () => {
+  const today = D(2026, 7, 29), per = currentPeriod(today), due = D(2026, 8, 20);
+  assert.equal(cardPaymentPlacement({ payAmount: "", paidOn: "2026-07-29" }, due, per, today), null);
+  assert.equal(cardPaymentPlacement({ payAmount: "0", paidOn: "2026-07-29" }, due, per, today), null);
+  assert.equal(cardPaymentPlacement({ payAmount: "-50", paidOn: "2026-07-29" }, due, per, today), null);
+  assert.equal(cardPaymentPlacement({ payAmount: "200" }, null, per, today), null, "no due date, no paidOn");
+});
+
+test("paying both cards on one day charges both to that period (1.23.0)", () => {
+  const today = D(2026, 7, 29), per = currentPeriod(today);
+  const soon = cardPaymentPlacement({ payAmount: "100", paidOn: "2026-07-29" }, D(2026, 8, 5), per, today);
+  const later = cardPaymentPlacement({ payAmount: "200", paidOn: "2026-07-29" }, D(2026, 8, 20), per, today);
+  // neither due date is in this period, but the money for both is gone today
+  assert.equal(iso(soon.when), "2026-07-29");
+  assert.equal(iso(later.when), "2026-07-29");
+  assert.equal(soon.settled || later.settled, false);
 });
 
 test("billDate clamps a 31st to short months", () => {
