@@ -8,6 +8,24 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.24.0] — 2026-07-30
+
+### Fixed
+- **Money entered on a payday no longer falls through the cracks.** The 15th and the last day of the month sit on the boundary between two periods, and two things quietly went wrong there. A card payment typed on payday itself was marked "paid" the moment you typed it — charged to no period at all, so your available cash read high by the whole payment. And a bill due on payday that you'd already ticked off was counted as owing again all day (its paid-tick was also locked with "Not due this pay period"). Both now land where you'd expect: payday-day money belongs to the period that payday opens.
+
+- **A payment doesn't vanish from your balance the day after its due date anymore.** When a card payment's due date passed, the app dropped the amount so next cycle starts blank — but it never took the money out of checking, so "available" jumped *up* by the payment the morning after. Bills already handled this correctly; cards and loans now do too: when the record clears, checking is debited to match, because that money really did leave. A payment made back in an earlier period isn't touched — that one was already squared up at payday.
+
+- **Loan payments now come out of checking, not just off the loan.** A loan's auto-payment used to reduce the loan balance on the due day while checking stayed put — and on the due day itself the payment was double-counted, both "upcoming" and already applied. It now applies the day after the due date, debiting checking once, same as cards.
+
+- **A bill that lands while the app is closed over a payday is still paid.** If the app was watching a bill ("due in 2 days") and you didn't open it again until the next period, the promise to debit checking was silently dropped. It now catches up the moment you're back.
+
+- **What's already paid shows up in the next-period preview.** Pay a card today that isn't due until next period, and the preview used to just drop the row. It now shows the row struck through with a *paid* tag, the date it went out, and $0 counted toward that period's total.
+
+### Changed
+- **The ½ button on the settle-up ledger is a toggle now.** It used to halve the amount again on every tap; a mis-tap meant retyping the bill. Tap once to split, tap again to put the full amount back — the button lights up while a split is active. Typing a new amount releases the split. If the other person edits a shared entry's amount, the toggle lets go rather than restoring a number that no longer matches.
+
+- Hardened saving: one hiccup while redrawing synced data could previously switch off saving for the rest of the session without saying so.
+
 ## [1.23.0] — 2026-07-29
 
 ### Fixed

@@ -221,6 +221,40 @@ test("paying both cards on one day charges both to that period (1.23.0)", () => 
   assert.equal(soon.settled || later.settled, false);
 });
 
+// currentPeriod on a payday has already rolled to the window that payday opens, so a
+// payment typed that day sits one day before period.start. It must charge the new
+// period — settling it instantly would charge it to no period at all (1.24.0).
+test("a payment typed on the 15th payday is charged, not settled (1.24.0)", () => {
+  const today = D(2026, 7, 15); // payday; currentPeriod is Jul 16–31
+  const p = cardPaymentPlacement({ payAmount: "200", paidOn: "2026-07-15" },
+                                 D(2026, 7, 20), currentPeriod(today), today);
+  assert.equal(p.settled, false, "typed on payday — some period must still charge it");
+  assert.equal(iso(p.when), "2026-07-20", "due date is ahead and inside the new period");
+});
+
+test("a payment typed on an EOM payday is charged, not settled (1.24.0)", () => {
+  const today = D(2026, 7, 31); // EOM payday; currentPeriod is Aug 1–15
+  const p = cardPaymentPlacement({ payAmount: "150", paidOn: "2026-07-31" },
+                                 D(2026, 8, 7), currentPeriod(today), today);
+  assert.equal(p.settled, false);
+  assert.equal(iso(p.when), "2026-08-07");
+});
+
+test("a payment from the day before the payday still settles the next period (1.24.0)", () => {
+  const today = D(2026, 8, 1); // period Aug 1–15, opened by the Jul 31 payday
+  const p = cardPaymentPlacement({ payAmount: "150", paidOn: "2026-07-30" },
+                                 D(2026, 8, 7), currentPeriod(today), today);
+  assert.equal(p.settled, true, "left before the payday that opened this period");
+  assert.equal(iso(p.when), "2026-07-30", "a settled payment names the day it went out");
+});
+
+test("a payment with a due date the user since cleared still charges on paidOn (1.24.0)", () => {
+  const today = D(2026, 7, 22), per = currentPeriod(today);
+  const p = cardPaymentPlacement({ payAmount: "80", paidOn: "2026-07-22" }, null, per, today);
+  assert.equal(p.settled, false);
+  assert.equal(iso(p.when), "2026-07-22", "no due date to sit on — the money still left today");
+});
+
 test("billDate clamps a 31st to short months", () => {
   assert.equal(iso(billDate(31, D(2026, 4, 1))), "2026-04-30");
   assert.equal(iso(billDate(31, D(2026, 2, 1))), "2026-02-28");

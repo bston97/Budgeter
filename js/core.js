@@ -220,6 +220,13 @@ export function cardDueDate(card, today) {
  * have none, and keep the old meaning — a plan sitting on the due date — so a stale entry
  * can't jump periods on its own.
  *
+ * The payday itself is a boundary case: `currentPeriod` on a payday has already rolled to
+ * the window that payday opens, so an amount typed that day carries a `paidOn` one day
+ * before `period.start`. Settling on `paidOn < period.start` alone would mark it paid the
+ * instant it was typed and charge it to no period at all. So a payment only settles when
+ * it left strictly before the payday that opened the period; payday-day money is charged
+ * to the period that payday opens.
+ *
  * @returns {null|{amount:number, paidOn:Date|null, when:Date, settled:boolean}}
  *   `when` is the date the money leaves; `settled` means it left in an earlier period and
  *   must not be charged again. Null when there is no payment to place.
@@ -230,7 +237,9 @@ export function cardPaymentPlacement(card, due, period, today) {
   if (!card.paidOn) return due ? { amount: amount, paidOn: null, when: due, settled: false } : null;
 
   var paidOn = stripTime(isoToDate(card.paidOn));
-  if (paidOn < stripTime(period.start)) return { amount: amount, paidOn: paidOn, when: paidOn, settled: true };
+  var start = stripTime(period.start);
+  var opened = new Date(start.getFullYear(), start.getMonth(), start.getDate() - 1); // the payday that opened this period
+  if (paidOn < opened) return { amount: amount, paidOn: paidOn, when: paidOn, settled: true };
   // still ahead of us and inside this period: leave it on the due date, where the running
   // balance expects it. Anything else already left the account the day it was entered.
   var onDue = due && due >= paidOn && due <= stripTime(period.end);

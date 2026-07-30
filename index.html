@@ -1358,8 +1358,8 @@ import {
     pendingRedraw = false;
     staleBoxes = [];
     suppressSave = true;
-    renderAll();
-    suppressSave = false;
+    // finally, or one render exception latches saving off for the whole session
+    try { renderAll(); } finally { suppressSave = false; }
   }
   function flushRedraw() {
     if (!pendingRedraw) return;
@@ -1488,7 +1488,10 @@ import {
     });
     return due > 0 && due === paid;
   }
-  // Once a loan's payment date passes, the payment really comes off the balance.
+  // Once a loan's payment date passes, the payment really comes off the balance — and off
+  // checking, since the money auto-drafted from the account. Strictly *after* the due day,
+  // matching cards: on the day itself the payment still shows as upcoming in the timeline,
+  // and debiting checking too would count it twice.
   // Each occurrence is applied exactly once, tracked by lastApplied.
   function applyDueLoanPayments() {
     var today = stripTime(new Date());
@@ -1507,8 +1510,9 @@ import {
       var guard = 0;
       while (guard++ < 120) { // catches up if the app wasn't opened for months
         var next = occurrenceAfter(l.dueDay, last);
-        if (next > today) break;
+        if (next >= today) break;
         l.balance = Math.max(0, num(l.balance) - pay).toFixed(2);
+        adjustChecking(-pay); // the draft left the bank; keeping checking flat would bounce "available" up
         l.lastApplied = dateToISO(next);
         last = next;
         changed = true;
@@ -1550,6 +1554,14 @@ import {
     state.bills.forEach(function (b) {
       if (!b.due) return;
       var occ = occurrenceInPeriod(b.due, per.start, per.end);
+      // a watched bill whose date slipped past while the app was closed across a payday:
+      // its occurrence is no longer in this period, but the promise to debit still stands
+      if (b.watching && b.paidFor !== b.watching && b.unpaidFor !== b.watching &&
+          stripTime(isoToDate(b.watching)) < today &&
+          (!occ || dateToISO(occ) !== b.watching)) {
+        setBillPaid(b, b.watching, true);
+        changed = true;
+      }
       if (!occ) return;
       var iso = dateToISO(occ);
       if (b.paidFor === iso || b.unpaidFor === iso) return; // already decided
@@ -1558,8 +1570,8 @@ import {
         return;
       }
       if (b.watching === iso) setBillPaid(b, iso, true); // watched it land — debit checking
-      else b.paidFor = iso;                              // never tracked upcoming — tick only
-      changed = true;
+      else { b.paidFor = iso; b.paidAdj = ""; }          // never tracked upcoming — tick only, and
+      changed = true;                                    // no debit happened, so unticking must not refund
     });
     return changed;
   }
@@ -1569,9 +1581,16 @@ import {
   // date show nothing owing and name what was already paid.
   function clearOldCardPayments() {
     var t = stripTime(new Date()), changed = false;
+    var per = currentPeriod(t);
     state.cards.forEach(function (c) {
       if (!c.payFor) return;
       if (t > stripTime(isoToDate(c.payFor))) {
+        // a payment still charged to this period sat in the projection as money about to
+        // leave; dropping the record without debiting checking would bounce "available"
+        // up by the amount even though the money is really gone. A settled payment was
+        // reconciled at rollover and must not be debited twice.
+        var place = cardPaymentPlacement(c, stripTime(isoToDate(c.payFor)), per, t);
+        if (place && !place.settled) adjustChecking(-place.amount);
         c.payAmount = ""; c.payFor = ""; c.paidOn = ""; changed = true;
       }
     });
@@ -1995,6 +2014,12 @@ import {
       // recomputed in place when the due day changes, so the tick never goes stale mid-edit
       function refreshPaidBox() {
         occ = occurrenceInPeriod(b.due, period.start, period.end);
+        // on a payday the period has already rolled, so a bill due today falls outside it —
+        // it still has to be tickable, or payday-day bills could never be marked paid
+        if (!occ) {
+          var alt = billOccurrence(b, new Date());
+          if (alt && dateToISO(alt) === todayISO()) occ = alt;
+        }
         occIso = occ ? dateToISO(occ) : "";
         isPaid = !!occIso && b.paidFor === occIso;
         paidBox.disabled = !occ; // nothing due this period to tick off
@@ -2164,7 +2189,12 @@ import {
       var when = occurrenceInPeriod(b.due, period.start, period.end);
       var paid = false;
       if (when) paid = b.paidFor === dateToISO(when);
-      else when = billOccurrence(b, today); // falls outside this period — used for the next-period preview
+      else {
+        when = billOccurrence(b, today); // falls outside this period — used for the next-period preview
+        // on a payday the period has already rolled past today, so a bill due (and paid)
+        // today lands here — without the check it would be re-counted as owing
+        if (when) paid = b.paidFor === dateToISO(when);
+      }
       if (!when) return;
       upcoming.push({ name: b.name || "Bill", amount: amt, when: when, beforePay: when <= payday, paid: paid });
     });
@@ -2848,6 +2878,12 @@ import {
 
       // enter the full bill, tap ½, and it becomes the other person's share. A toggle, not a
       // repeat divide: `item.full` holds the pre-split amount so tapping again puts it back.
+      // If a synced edit (or an older app version) changed the price out from under a stored
+      // full value, the toggle lets go — restoring an amount unrelated to what's on screen
+      // would corrupt the ledger.
+      if (item.full && Math.abs(Math.round((num(item.full) / 2) * 100) / 100 - num(item.price)) > 0.005) {
+        delete item.full;
+      }
       var half = el("button", "half-btn", { type: "button" });
       half.textContent = "½";
       function syncHalf() {
@@ -3335,14 +3371,15 @@ import {
         if (res && res.error) { setSync("error"); return; } // keep local cache visible
         if (res && res.data && res.data.data) {
           suppressSave = true;
-          state = migrate(res.data.data);
-          // remember exactly what the server holds, so a later conflict can be merged against it
-          syncedRev = state._rev || null;
-          baseState = JSON.parse(JSON.stringify(state));
-          var changed = clearOldOneoffs(); // expire stale one-offs from the loaded data
-          try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
-          renderAll();
-          suppressSave = false;
+          try {
+            state = migrate(res.data.data);
+            // remember exactly what the server holds, so a later conflict can be merged against it
+            syncedRev = state._rev || null;
+            baseState = JSON.parse(JSON.stringify(state));
+            var changed = clearOldOneoffs(); // expire stale one-offs from the loaded data
+            try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+            renderAll();
+          } finally { suppressSave = false; } // or one render exception latches saving off for good
           if (changed) pushCloud(); // only write back when the cleanup actually removed something
           setSync("saved");
         } else {
