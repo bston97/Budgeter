@@ -8,6 +8,22 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.25.0] — 2026-07-30
+
+### Fixed
+- **Edits made offline are no longer thrown away.** If you changed something with no connection — or closed the tab in the second before a save landed — those edits lived only on this device. The next time the app opened, it replaced everything with the older copy from the cloud, and the changes were gone with nothing to say so. The app now writes down that it's ahead of the server, and what the server held at the time, so the next sign-in reconciles the two instead of picking one: your offline edits stay, and anything another device changed in the meantime still arrives.
+
+- **Two accounts on one device no longer see each other's money.** The saved copy was kept under a single name shared by every account. Sign in as someone else and the previous person's budget was sitting there — and if the new account had never synced before, the app would *upload* that budget as theirs. Each account's copy is now filed under its own name. The first account to sign in after this update takes over the existing copy (nothing of yours moves), and no one after that can reach it.
+
+- **A session that expires now clears the screen.** Only the sign-out button used to tidy up. If a session simply ran out, the previous account's numbers stayed on screen and in memory for whoever signed in next. Signing out also no longer strands your data if the network call fails on the way out.
+
+- **A dropped connection no longer hides the shared settle-up ledger.** A failed load — coming back to the tab offline, a hiccup at the server — quietly switched you to your own private ledger, which is usually empty. Anything typed there vanished from view once the shared one came back. A failed load now changes nothing; you keep looking at the ledger you were already on.
+
+- **Your own settle-up edits can't be reverted by an update you'd already been shown.** If your partner's change arrived while you were mid-edit, the app held it back until you finished — then applied it *after* your newer edit had already been sent, rolling your entry back and pushing the rollback. Held updates are now ordered against your own writes, so only genuinely newer changes are applied.
+
+### Known limitation
+- The shared settle-up ledger is still last-write-wins as a whole. If both people add an entry within about a second of each other, one of the two can still be lost. Fixing that properly means giving each ledger row a stable id and merging row by row — a separate change.
+
 ## [1.24.0] — 2026-07-30
 
 ### Fixed

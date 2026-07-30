@@ -1168,6 +1168,12 @@ import {
   // Deliberately still "runway" — this is the localStorage key from before the rename.
   // Changing it would orphan every existing cache and lose anything not yet synced.
   var KEY = "runway.budget.v1";
+  // One device can hold more than one account's budget, so the cache is namespaced per user
+  // as soon as we know who signed in. KEY itself stays the pre-namespacing slot: the first
+  // account to arrive adopts it and it is removed, so a second account can never inherit —
+  // or worse, seed its empty cloud row from — the first one's money.
+  var cacheKey = KEY;
+  function unsyncedKey() { return cacheKey + ".unsynced"; }
 
   var sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
   var user = null;
@@ -1282,7 +1288,7 @@ import {
   }
   function readLocal() {
     try {
-      var raw = localStorage.getItem(KEY);
+      var raw = localStorage.getItem(cacheKey);
       if (raw) return JSON.parse(raw);
     } catch (e) {}
     return null;
@@ -1297,16 +1303,46 @@ import {
   // ---------- persistence (local cache + debounced cloud) ----------
   function save() {
     if (suppressSave) return;
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    try { localStorage.setItem(cacheKey, JSON.stringify(state)); } catch (e) {}
     scheduleCloud();
   }
   function scheduleCloud() {
     if (!sb || !user) return;
     cloudSeq++;
     pendingSave = true;
+    markUnsynced();
     setSync("saving");
     clearTimeout(cloudTimer);
     cloudTimer = setTimeout(pushCloud, 900);
+  }
+  // pendingSave lives in memory, so closing the tab before a push lands used to leave no
+  // trace that these edits never reached the server — and the next sign-in would happily
+  // overwrite them with the older cloud copy. Record on disk that we're ahead of the server,
+  // along with what the server held when we started, which is what a later merge needs to
+  // tell our edits apart from another device's.
+  var dirtyMarked = false;
+  function markUnsynced() {
+    if (dirtyMarked) return;
+    dirtyMarked = true;
+    try { localStorage.setItem(unsyncedKey(), JSON.stringify({ base: baseState })); } catch (e) {}
+  }
+  function clearUnsynced() {
+    dirtyMarked = false;
+    try { localStorage.removeItem(unsyncedKey()); } catch (e) {}
+  }
+  function readUnsynced() {
+    try {
+      var raw = localStorage.getItem(unsyncedKey());
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  }
+  // Same budget content, ignoring the write id. A push that changes nothing still stamps a
+  // new _rev, which makes every other signed-in device merge and redraw for nothing.
+  function sameData(a, b) {
+    var x = JSON.parse(JSON.stringify(a)), y = JSON.parse(JSON.stringify(b));
+    delete x._rev; delete y._rev;
+    return canon(x) === canon(y);
   }
   // Two devices on one account each hold the whole state in memory, so whichever writes
   // last would erase everything the other changed. Look at what's actually on the server
@@ -1334,7 +1370,7 @@ import {
         if (res && res.error) { onSaveFail(); return; }
         syncedRev = snapshot._rev;
         baseState = snapshot;
-        if (seqAtPush === cloudSeq) pendingSave = false; // don't clear if another edit queued meanwhile
+        if (seqAtPush === cloudSeq) { pendingSave = false; clearUnsynced(); } // don't clear if another edit queued meanwhile
         setSync("saved");
       })
       .catch(onSaveFail);
@@ -1348,7 +1384,7 @@ import {
     var out = mergeSections(state, migrate(JSON.parse(JSON.stringify(remote))), baseState);
     staleBoxes = staleBoxes.concat(out.stale);
     state = out.merged;
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    try { localStorage.setItem(cacheKey, JSON.stringify(state)); } catch (e) {}
     // renderAll() rewrites every field, so holding it until they stop typing is the
     // difference between showing their changes and eating their keystrokes.
     if (isTyping()) { pendingRedraw = true; return; }
@@ -2681,6 +2717,9 @@ import {
   function saveSettle() { if (sharedMode) scheduleSharedSave(); else save(); }
   // seq lets a push know whether another edit was queued behind it; recentRevs identifies our own realtime echoes
   var sharedSeq = 0, recentRevs = [];
+  // pushSeq orders our own writes against payloads held back while typing, so a push can
+  // tell whether a waiting update predates it (ours supersedes) or arrived mid-flight
+  var sharedPushSeq = 0, pendingRemoteAt = -1;
   function scheduleSharedSave() {
     if (!sb || !sharedMode) return;
     sharedSeq++;
@@ -2693,6 +2732,7 @@ import {
     if (!sb || !sharedMode) return;
     clearTimeout(sharedRetryTimer);
     var seqAtPush = sharedSeq;
+    var pushAt = ++sharedPushSeq;
     sharedData.seeded = true; // any write marks the ledger as in-use, so auto-seeding can never fire again
     sharedData._rev = uid(); // client id for this write, so its realtime echo can be recognized
     recentRevs.push(sharedData._rev);
@@ -2703,6 +2743,10 @@ import {
         else {
           if (seqAtPush === sharedSeq) sharedPending = false; // don't clear if another edit queued meanwhile
           setSync("saved");
+          // A payload held back from before this push is now older than what we just sent —
+          // applying it would revert our own edits on screen and then push them away for
+          // good. One that arrived mid-flight is genuinely newer and still stands.
+          if (pendingRemote && pendingRemoteAt < pushAt) { pendingRemote = null; pendingRemoteAt = -1; }
           flushRemoteSettle();
         }
       })
@@ -2720,7 +2764,11 @@ import {
     sb.from("shared_settle").select("data").eq("id", SHARED_ID).maybeSingle()
       .then(function (res) {
         if (sharedPending) return; // an edit landed while this request was in flight
-        if (res && !res.error && res.data && res.data.data) {
+        // A failed read says nothing about whether the shared ledger exists. Dropping to the
+        // private one here would hide the real ledger and strand anything typed until the
+        // next successful load — so on an error, change nothing.
+        if (res && res.error) { setSync("error"); return; }
+        if (res && res.data && res.data.data) {
           sharedMode = true;
           sharedData = normSettle(res.data.data);
           // one-time migration: bring an existing private ledger into the never-yet-used shared one
@@ -2739,7 +2787,7 @@ import {
         } else { sharedMode = false; sharedData = null; unsubscribeShared(); }
         applySettleMode();
       })
-      .catch(function () { sharedMode = false; sharedData = null; applySettleMode(); });
+      .catch(function () { setSync("error"); }); // offline: keep showing the ledger we already have
   }
   function applySettleMode() {
     document.getElementById("nameA").value = S().nameA;
@@ -2838,7 +2886,7 @@ import {
               if (!d) return;
               // our own write coming back — jsonb reorders keys, so compare by rev id, not by stringify
               if (d._rev && recentRevs.indexOf(d._rev) >= 0) return;
-              if (sharedPending || editingSettle()) { pendingRemote = d; return; }
+              if (sharedPending || editingSettle()) { pendingRemote = d; pendingRemoteAt = sharedPushSeq; return; }
               applyRemoteSettle(d);
             })
         .subscribe();
@@ -3129,7 +3177,8 @@ import {
       msg += " This clears it everywhere your account syncs and can't be undone.";
       if (confirm(msg)) {
         suppressSave = true;
-        try { localStorage.removeItem(KEY); } catch (e) {}
+        try { localStorage.removeItem(cacheKey); } catch (e) {}
+        clearUnsynced(); // the cleared state is what we want pushed, not the edits it replaced
         state = migrate(defaults());
         // A reset is an explicit "replace everything" — drop the synced copy so the merge
         // in pushCloud can't treat the cleared sections as ours-unchanged and restore them.
@@ -3208,16 +3257,10 @@ import {
     });
     document.getElementById("signOut").addEventListener("click", function () {
       if (!sb) return;
-      sb.auth.signOut().then(function () {
-        user = null;
-        // clear cached data so a different account signing in here can't inherit it
-        suppressSave = true;
-        try { localStorage.removeItem(KEY); } catch (e) {}
-        state = migrate(defaults());
-        unsubscribeShared();
-        sharedMode = false; sharedData = null;
-        syncedRev = null; baseState = null; pendingRedraw = false; staleBoxes = []; // never merge against another account's copy
-        suppressSave = false;
+      // .finally, not .then: if the network call fails the session may already be gone
+      // server-side, and leaving this account's data on screen would be worse
+      sb.auth.signOut().catch(function () {}).then(function () {
+        leaveAccount(true);
         showAuth();
       });
     });
@@ -3347,13 +3390,38 @@ import {
     document.getElementById("app").style.display = "none";
     document.getElementById("authScreen").style.display = "";
   }
+  // Put this account's data out of reach — in memory and, when they actually asked to leave,
+  // on disk too. A session that merely expired keeps its cache: it's namespaced per account,
+  // so no one else can reach it, and it's still there if they sign back in offline.
+  function leaveAccount(wipeCache) {
+    user = null;
+    clearTimeout(cloudTimer); clearTimeout(retryTimer);
+    pendingSave = false;
+    suppressSave = true;
+    try {
+      if (wipeCache) {
+        try { localStorage.removeItem(cacheKey); localStorage.removeItem(unsyncedKey()); } catch (e) {}
+      }
+      cacheKey = KEY;
+      dirtyMarked = false;
+      state = migrate(defaults());
+      unsubscribeShared();
+      sharedMode = false; sharedData = null; sharedPending = false;
+      knownHasPassword = false;
+      syncedRev = null; baseState = null; pendingRedraw = false; staleBoxes = []; // never merge against another account's copy
+    } finally { suppressSave = false; }
+  }
   function enterApp(u) {
     user = u;
+    // only ever reached for a different account than the one before, so whether a password
+    // exists has to be read fresh — carrying it over hides "Set a password" from the new one
+    knownHasPassword = false;
+    adoptCache(u); // load this account's own cache before anything is shown or pushed
     document.getElementById("authScreen").style.display = "none";
     document.getElementById("app").style.display = "";
     var chip = document.getElementById("acctEmail");
     if (chip) chip.textContent = u.email || "";
-    var hasPw = knownHasPassword || !!(u.user_metadata && u.user_metadata.has_password);
+    var hasPw = !!(u.user_metadata && u.user_metadata.has_password);
     if (hasPw) knownHasPassword = true;
     document.getElementById("setPw").textContent = hasPw ? "Change password" : "Set password";
     document.getElementById("pwSetLabel").textContent = hasPw
@@ -3362,28 +3430,70 @@ import {
     pullCloud(u);
     loadSharedSettle();
   }
+  // Point the cache at this account and load it, before any cloud read. Whatever is on
+  // screen while the pull is in flight then belongs to the account that just signed in,
+  // rather than to whoever used this device last.
+  function adoptCache(u) {
+    var scoped = KEY + "." + u.id;
+    var raw = null;
+    try { raw = localStorage.getItem(scoped); } catch (e) {}
+    if (raw === null) {
+      // Nothing under this account yet. The pre-namespacing cache belongs to whoever last
+      // used this device, so the first account here takes it over and it's gone for good.
+      var legacy = null;
+      try { legacy = localStorage.getItem(KEY); } catch (e) {}
+      if (legacy !== null) {
+        try { localStorage.setItem(scoped, legacy); localStorage.removeItem(KEY); } catch (e) {}
+        raw = legacy;
+      }
+    }
+    cacheKey = scoped;
+    dirtyMarked = !!readUnsynced(); // edits from a previous visit that never reached the server
+    var parsed = null;
+    try { parsed = raw ? JSON.parse(raw) : null; } catch (e) { parsed = null; }
+    suppressSave = true;
+    try {
+      state = migrate(parsed || defaults());
+      renderAll();
+    } finally { suppressSave = false; }
+  }
   function pullCloud(u) {
     setSync("loading");
     // switching accounts re-enters here without a sign-out, so drop the previous copy first
     syncedRev = null; baseState = null; pendingRedraw = false; staleBoxes = [];
+    var unsynced = readUnsynced(); // edits this device made that the server never got
     sb.from("budgets").select("data").eq("user_id", u.id).maybeSingle()
       .then(function (res) {
         if (res && res.error) { setSync("error"); return; } // keep local cache visible
         if (res && res.data && res.data.data) {
           suppressSave = true;
+          var push = false;
           try {
-            state = migrate(res.data.data);
-            // remember exactly what the server holds, so a later conflict can be merged against it
-            syncedRev = state._rev || null;
-            baseState = JSON.parse(JSON.stringify(state));
-            var changed = clearOldOneoffs(); // expire stale one-offs from the loaded data
-            try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+            var remote = migrate(JSON.parse(JSON.stringify(res.data.data)));
+            // remember exactly what the server holds, so a later conflict can be merged
+            // against it — taken before the merge, which takes `remote` over as its result
+            var server = JSON.parse(JSON.stringify(remote));
+            if (unsynced) {
+              // This device is ahead of the server: reconcile section by section instead of
+              // letting the older cloud copy erase what was typed offline.
+              var out = mergeSections(state, remote, unsynced.base);
+              staleBoxes = out.stale;
+              state = out.merged;
+              push = !sameData(state, server);
+            } else {
+              state = remote;
+            }
+            syncedRev = server._rev || null;
+            baseState = server;
+            if (clearOldOneoffs()) push = true; // expire stale one-offs from the loaded data
+            try { localStorage.setItem(cacheKey, JSON.stringify(state)); } catch (e) {}
             renderAll();
           } finally { suppressSave = false; } // or one render exception latches saving off for good
-          if (changed) pushCloud(); // only write back when the cleanup actually removed something
-          setSync("saved");
+          if (push) pushCloud(); // only write back when we actually hold something newer
+          else { clearUnsynced(); setSync("saved"); }
         } else {
-          // first sign-in on this account: seed cloud from whatever is loaded locally
+          // First sign-in on this account: seed the cloud from this account's own cache,
+          // which adoptCache has already made sure is what's loaded.
           renderAll();
           pushCloud();
         }
@@ -3407,7 +3517,10 @@ import {
       if (session && session.user) {
         if (!user || user.id !== session.user.id) enterApp(session.user);
       } else if (!session && user) {
-        user = null; showAuth();
+        // session expired or was revoked elsewhere — same cleanup as signing out, or the
+        // next account to sign in here would be looking at this one's budget
+        leaveAccount(false);
+        showAuth();
       }
     });
   }
