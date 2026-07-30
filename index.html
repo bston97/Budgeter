@@ -400,8 +400,8 @@
   .tl-amt.in { color: var(--accent); }
 
   /* credit card rows carry a due day */
-  .col-head.cards-head { grid-template-columns: 1fr 78px 96px 34px; }
-  .line-row.card-row { grid-template-columns: 1fr 78px 96px 34px; }
+  .col-head.cards-head { grid-template-columns: 1fr 78px 72px 96px 34px; }
+  .line-row.card-row { grid-template-columns: 1fr 78px 72px 96px 34px; }
 
   /* loan rows carry a fixed payment and a due day */
   .col-head.loans-head { grid-template-columns: 1fr 76px 76px 96px 30px; }
@@ -424,9 +424,17 @@
 
   /* card payments due this period */
   .cardpay-row {
-    display: grid; grid-template-columns: 1fr 96px; gap: 8px 10px; align-items: center;
+    display: grid; grid-template-columns: 1fr 96px 26px; gap: 8px 10px; align-items: center;
     padding: 10px 0; border-top: 1px solid var(--line);
   }
+  .cp-clear {
+    border: none; background: none; color: var(--ink-faint); font-size: 18px; line-height: 1;
+    padding: 4px; cursor: pointer; border-radius: 6px;
+  }
+  .cp-clear:hover { color: var(--crit); background: var(--crit-soft); }
+  .cp-clear[hidden] { display: none; }
+  .cp-under { display: block; font-size: 12px; font-weight: 600; color: var(--warn); }
+  .cp-under[hidden] { display: none; }
   .cardpay-row:first-child { border-top: none; }
   .cp-name { font-weight: 600; font-size: 14px; }
   .cp-due { display: block; font-size: 12px; color: var(--ink-faint); font-weight: 500; }
@@ -662,6 +670,7 @@
     cursor: pointer; font-family: inherit; font-size: 12px;
   }
   footer.note button:hover { color: var(--crit); }
+  #clearCycle:hover { color: var(--accent); } /* routine housekeeping, not the destructive one */
 </style>
 </head>
 <body>
@@ -1015,7 +1024,7 @@
               <span class="head-total debt tnum" id="cardsHead">$0.00</span>
             </div>
             <div class="card-body">
-              <div class="col-head cards-head"><span>Card</span><span class="r">Balance owed</span><span class="r">Due day</span><span></span></div>
+              <div class="col-head cards-head"><span>Card</span><span class="r">Balance owed</span><span class="r">Minimum</span><span class="r">Due day</span><span></span></div>
               <div id="cards"></div>
               <button class="add-btn" id="addCard" type="button">+ Add credit card</button>
               <div class="subtotal">
@@ -1142,6 +1151,7 @@
 
     <footer class="note">
       Synced to your account across devices · paydays are the 15th and last day of each month ·
+      <button id="clearCycle" type="button">Clear this cycle's entries</button> ·
       <button id="reset" type="button">Reset all data</button>
     </footer>
   </div>
@@ -1222,7 +1232,7 @@ import {
     if (!Array.isArray(s.cards)) s.cards = [{ name: "Visa", balance: "" }];
     s.cards.forEach(function (c) {
       if (!c.id) c.id = uid();
-      ["dueDay", "payAmount", "payFor", "paidOn"].forEach(function (k) {
+      ["dueDay", "payAmount", "payFor", "paidOn", "minPay"].forEach(function (k) {
         if (typeof c[k] !== "string") c[k] = c[k] != null ? String(c[k]) : "";
       });
       var dn = parseInt(c.dueDay, 10);
@@ -1650,6 +1660,24 @@ import {
     });
     return changed;
   }
+  // Void a recorded payment. Nothing is refunded: a payment still charged to this period was
+  // only ever a projection, and a settled one was already reconciled at its own payday.
+  function clearCardPayment(c) {
+    if (!c.payAmount && !c.payFor && !c.paidOn) return false;
+    c.payAmount = ""; c.payFor = ""; c.paidOn = "";
+    return true;
+  }
+  // The entries that are yours to retype each cycle: what you paid each card, and the
+  // one-off money in and out. Balances, bills and due days describe how things are and stay
+  // put; bill ticks are left alone too, since unticking one has to hand the money back to
+  // checking and that is a decision per bill, not a sweep.
+  function clearCycleEntries() {
+    var n = 0;
+    state.cards.forEach(function (c) { if (clearCardPayment(c)) n++; });
+    n += state.oneoffs.length;
+    state.oneoffs = [];
+    return n;
+  }
   function fmtShort(iso) {
     var p = String(iso).split("-");
     if (p.length !== 3) return iso;
@@ -1719,6 +1747,16 @@ import {
       amt.addEventListener("input", function () { c.balance = amt.value; onWorthChange(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
+      // The minimum doesn't move month to month the way the payment does, so it lives here
+      // with the balance rather than on the Payday tab — where it just marks the line you
+      // have to clear.
+      var minWrap = el("div", "amt");
+      var minCur = el("span", "cur"); minCur.textContent = "$";
+      var minIn = el("input", null, { type: "text", inputmode: "decimal", placeholder: "—", title: "Minimum payment due each month" });
+      minIn.value = c.minPay || "";
+      minIn.addEventListener("input", function () { c.minPay = minIn.value; save(); renderCardPayments(); });
+      minWrap.appendChild(minCur); minWrap.appendChild(minIn);
+
       var isEom = String(c.dueDay).toUpperCase() === "EOM";
       var dueWrap = el("div", "due-cell");
       var due = el("input", null, { type: "text", inputmode: "numeric", pattern: "[0-9]*", maxlength: "2", placeholder: "—", title: "Payment due day (1–28), or EOM" });
@@ -1749,11 +1787,11 @@ import {
         removeRow(row, function () {
           var at = state.cards.indexOf(c);
           if (at >= 0) state.cards.splice(at, 1);
-          renderCards(); onWorthChange(); renderOneoffs(); renderCardPayments(); recompute();
+          renderCards(); onWorthChange(); renderCardPayments(); recompute();
         });
       });
 
-      row.appendChild(name); row.appendChild(amtWrap); row.appendChild(dueWrap); row.appendChild(del);
+      row.appendChild(name); row.appendChild(amtWrap); row.appendChild(minWrap); row.appendChild(dueWrap); row.appendChild(del);
       box.appendChild(row);
     });
     markNewRow(box);
@@ -1875,6 +1913,7 @@ import {
         fixed.textContent = num(c.payment) > 0 ? money(num(c.payment)) : "—";
         fixed.title = "Fixed payment, set on the Net worth tab";
         row.appendChild(fixed);
+        row.appendChild(el("div")); // keeps the loan row aligned with the cards' clear button
       } else {
         // the earlier payment, kept whole so backing out of a new amount restores it
         var done = settled ? { payAmount: c.payAmount, payFor: c.payFor, paidOn: c.paidOn } : null;
@@ -1885,12 +1924,21 @@ import {
             MON[place.paidOn.getMonth()] + " " + place.paidOn.getDate();
           nameWrap.appendChild(paidLbl);
         }
+        // filled in by updateCardPayTotals so it can follow what's being typed without a redraw
+        var underLbl = el("span", "cp-under");
+        underLbl.hidden = true;
+        nameWrap.appendChild(underLbl);
+        var minAmt = num(c.minPay);
         var amtWrap = el("div", "amt");
         var cur = el("span", "cur"); cur.textContent = "$";
-        var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+        var amt = el("input", null, { type: "text", inputmode: "decimal",
+          placeholder: minAmt > 0 ? minAmt.toFixed(2) : "0.00" }); // the minimum as a hint of what's expected
         amt.value = settled ? "" : (c.payAmount || "");
-        var rowRef = { c: c, loan: false, settled: settled };
+        var rowRef = { c: c, loan: false, settled: settled, minAmt: minAmt, underEl: underLbl };
         amt.addEventListener("input", function () {
+          // recomputed here rather than captured: with the tab left open across midnight the
+          // due date can roll to the next month, and the amount must follow it
+          var nowDue = cardDueDate(c, new Date());
           var blank = amt.value === "";
           if (blank && done) {
             c.payAmount = done.payAmount; c.payFor = done.payFor; c.paidOn = done.paidOn;
@@ -1898,7 +1946,7 @@ import {
             // tie the amount to the due date it covers, so it clears once that passes, and to
             // the day it was typed, which is the day the money actually left
             c.payAmount = amt.value;
-            c.payFor = blank ? "" : dateToISO(when);
+            c.payFor = blank ? "" : dateToISO(nowDue || when);
             c.paidOn = blank ? "" : todayISO();
           }
           // a new amount replaces the earlier payment, so its note steps aside — toggled in
@@ -1909,6 +1957,20 @@ import {
         });
         amtWrap.appendChild(cur); amtWrap.appendChild(amt);
         row.appendChild(amtWrap);
+
+        // Voiding a recorded payment was otherwise impossible: blanking the box restores the
+        // earlier one by design, so without this a wrong entry could only be overwritten.
+        var clr = el("button", "cp-clear", { type: "button", title: "Clear this payment",
+          "aria-label": "Clear the payment recorded for " + (c.name || "this card") });
+        clr.innerHTML = "&times;";
+        clr.hidden = !(num(c.payAmount) > 0);
+        clr.addEventListener("click", function () {
+          clearCardPayment(c);
+          renderCardPayments();
+          recompute();
+        });
+        rowRef.clearEl = clr; // assigned here, not in the literal above — clr doesn't exist yet there
+        row.appendChild(clr);
       }
 
       var afterEl = el("div", "cp-after");
@@ -1928,6 +1990,14 @@ import {
       // a settled row's money left in an earlier period — the balance already reflects it
       var c = r.c, amt = r.settled ? 0 : r.loan ? num(c.payment) : num(c.payAmount);
       total += amt;
+      if (r.clearEl) r.clearEl.hidden = !(num(c.payAmount) > 0);
+      if (r.underEl) {
+        // only once something is actually typed — an empty box is a payment not made yet,
+        // which the due date already says, not a payment that falls short
+        var short = r.minAmt > 0 && !r.settled && amt > 0 && amt < r.minAmt - 0.005;
+        r.underEl.hidden = !short;
+        if (short) r.underEl.textContent = "under the " + money(r.minAmt) + " minimum";
+      }
       if (amt > 0 && String(c.balance).trim() !== "") {
         var after = num(c.balance) - amt;
         r.afterEl.textContent = "→ balance after: " + money(after);
@@ -3188,6 +3258,17 @@ import {
     });
     document.getElementById("nameB").addEventListener("input", function () {
       S().nameB = this.value; saveSettle(); recomputeSettle();
+    });
+    document.getElementById("clearCycle").addEventListener("click", function () {
+      var n = 0;
+      state.cards.forEach(function (c) { if (num(c.payAmount) > 0) n++; });
+      n += state.oneoffs.length;
+      if (!n) { pennySay("Nothing to clear — this cycle's entries are already empty."); return; }
+      if (!confirm("Clear the entries you fill in each cycle — card payment amounts and extra money in and out?" +
+                   "\n\nBalances, bills, due days and paid ticks stay as they are.")) return;
+      clearCycleEntries();
+      renderCardPayments(); renderOneoffs(); recompute(); save();
+      pennySay("Cleared. Fresh slate for this cycle.");
     });
     document.getElementById("reset").addEventListener("click", function () {
       var msg = "Clear ALL saved data — checking, bills, extra payments, credit score, debts, and assets?";

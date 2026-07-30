@@ -8,6 +8,22 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.26.0] — 2026-07-30
+
+### Added
+- **A minimum payment per card.** New column on the Net worth tab, next to the balance. It's the one number about a card that doesn't move month to month, so it lives with the balance rather than being retyped. On the Payday tab it shows up as the amount the box is expecting, and if you enter less than it, the row says **under the $35.00 minimum** in amber. Nothing is blocked — sometimes less is the plan — it just won't let you do it without noticing. Leave it blank and nothing changes.
+
+- **Clear a single card payment.** A × appears on a payment row once an amount is recorded there. Before this, blanking the box put the previous payment back by design, so a wrong entry could be overwritten but never actually removed. Nothing is refunded when you clear one: a payment still charged to this period was only ever a projection, and one from an earlier period was already squared up at its payday.
+
+- **"Clear this cycle's entries"**, in the footer. Wipes the two things you retype every cycle — what you paid each card, and the extra money in and out — and leaves everything that describes how things *are*: balances, bills, due days, minimums, and your paid ticks. Bill ticks are deliberately left alone, since unticking one has to hand the money back to checking, and that's a decision per bill rather than a sweep. It says what it will do before it does it, and tells you if there was nothing to clear.
+
+### Fixed
+- **A half-typed due day no longer moves money.** Due days are typed a character at a time, and the app was treating anything it couldn't read as the 1st — so on the way to "25", the app briefly put the bill on the 1st of the month and charged it there. Anything that isn't a real day is now simply not a date, which is what the rest of the app already assumed.
+
+- **Typing a bill's due day doesn't jump away after the first digit.** "2" on the way to "25" is a real date that may already have passed, and the app was deciding then and there that the bill was paid, ticking it for a day you never meant and rebuilding the list under your cursor. It now waits until you've moved on.
+
+- A card payment whose due day you later cleared no longer disappears from the projection — the money still left. One-off entries saved before per-period expiry existed now get one, instead of quietly dragging every period forever. And the bill due-day and credit-score boxes lost their number spinners, matching the card and loan boxes.
+
 ## [1.25.0] — 2026-07-30
 
 ### Fixed
