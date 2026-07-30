@@ -800,21 +800,14 @@
                     <option value="week">week</option>
                   </select>
                 </div>
-                <div class="pay-field" id="salaryField" hidden>
-                  <label for="paySalary">Annual salary</label>
-                  <div class="money-input">
-                    <span class="cur">$</span>
-                    <input type="text" inputmode="decimal" id="paySalary" placeholder="0" />
-                  </div>
-                </div>
                 <div class="pay-field" id="netCheckField" hidden>
-                  <label for="payNetCheck">Take-home / check</label>
+                  <label for="payNetCheck">Take-home / paycheck</label>
                   <div class="money-input">
                     <span class="cur">$</span>
-                    <input type="text" inputmode="decimal" id="payNetCheck" placeholder="exact" />
+                    <input type="text" inputmode="decimal" id="payNetCheck" placeholder="0.00" />
                   </div>
                 </div>
-                <div class="pay-field">
+                <div class="pay-field" id="takeHomeField">
                   <label for="payTakeHome">Take-home %</label>
                   <input type="text" inputmode="decimal" id="payTakeHome" placeholder="100" />
                 </div>
@@ -1190,7 +1183,7 @@ import {
       creditScore: "",
       creditDate: "",
       oneoffs: [],
-      pay: { mode: "hourly", rate: "", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "", salary: "", netCheck: "" },
+      pay: { mode: "hourly", rate: "", per: "hour", hours: "8", hoursUnit: "day", takeHome: "100", daysOff: "", netCheck: "" },
       nwHistory: [],
       periodHistory: [],
       cards: [{ name: "Visa", balance: "" }],
@@ -1261,6 +1254,14 @@ import {
       if (typeof s.pay[k] !== "string") s.pay[k] = s.pay[k] != null ? String(s.pay[k]) : "";
     });
     if (s.pay.mode !== "hourly" && s.pay.mode !== "salary") s.pay.mode = "hourly";
+    // salaried used to be an annual figure divided by 24 and multiplied by take-home %; it's
+    // the per-check take-home now, so carry over the number that was already on screen. Only
+    // for someone actually on salary — a stale annual figure from an hourly user is noise.
+    if (s.pay.mode === "salary" && !s.pay.netCheck && num(s.pay.salary) > 0) {
+      var pct = s.pay.takeHome === "" ? 100 : Math.max(0, Math.min(100, num(s.pay.takeHome)));
+      s.pay.netCheck = String(Math.round(num(s.pay.salary) / 24 * (pct / 100) * 100) / 100);
+    }
+    delete s.pay.salary;
     if (s.pay.per !== "hour" && s.pay.per !== "day") s.pay.per = "hour";
     if (s.pay.hoursUnit !== "day" && s.pay.hoursUnit !== "week") s.pay.hoursUnit = "day";
     if (!Array.isArray(s.nwHistory)) s.nwHistory = [];
@@ -2246,13 +2247,14 @@ import {
   function renderPaycheck(payday, available) {
     var salaried = state.pay.mode === "salary";
     // show only the fields that belong to the selected pay type
-    ["rateField", "perField", "daysOffField"].forEach(function (id) {
+    // salaried asks for one number — the take-home on the check — so everything the
+    // hourly estimate needs, take-home % included, goes away
+    ["rateField", "perField", "daysOffField", "takeHomeField"].forEach(function (id) {
       document.getElementById(id).hidden = salaried;
     });
     var flatWeekdayRate = state.pay.per === "day"; // a flat per-weekday rate needs no hours figure
     document.getElementById("hoursField").hidden = salaried || flatWeekdayRate;
     document.getElementById("hoursUnitField").hidden = salaried || flatWeekdayRate;
-    document.getElementById("salaryField").hidden = !salaried;
     document.getElementById("netCheckField").hidden = !salaried;
 
     var check = projectedCheck(state.pay, payday);
@@ -2277,8 +2279,9 @@ import {
     }
 
     if (salaried) {
-      setText("weekdayLabel", check.exact ? "Take-home per check" : "Gross per check (salary ÷ 24)");
-      setText("weekdayCount", money(check.gross));
+      // the amount is already the headline figure — the useful detail here is the window
+      setText("weekdayLabel", "Pay period");
+      setText("weekdayCount", periodTxt);
     } else {
       var hrs = Math.round(check.totalHours * 100) / 100;
       var days = check.worked === weekdays ? String(weekdays) : check.worked + " of " + weekdays;
@@ -2852,7 +2855,6 @@ import {
     document.getElementById("payHours").value = state.pay.hours || "";
     document.getElementById("payHoursUnit").value = state.pay.hoursUnit || "day";
     document.getElementById("payHours").placeholder = state.pay.hoursUnit === "week" ? "40" : "8";
-    document.getElementById("paySalary").value = state.pay.salary || "";
     document.getElementById("payNetCheck").value = state.pay.netCheck || "";
     document.getElementById("payTakeHome").value = state.pay.takeHome || "";
     document.getElementById("payDaysOff").value = state.pay.daysOff || "";
@@ -2966,9 +2968,9 @@ import {
       }
     });
     var PAY_KEYS = { payRate: "rate", payHours: "hours", payTakeHome: "takeHome", payDaysOff: "daysOff",
-                     paySalary: "salary", payNetCheck: "netCheck" };
+                     payNetCheck: "netCheck" };
     var PAY_BOUNDS = { payRate: [0, null], payHours: [0, 168], payTakeHome: [0, 100], payDaysOff: [0, null],
-                       paySalary: [0, null], payNetCheck: [0, null] };
+                       payNetCheck: [0, null] };
     Object.keys(PAY_KEYS).forEach(function (id) {
       var elx = document.getElementById(id);
       elx.addEventListener("input", function () {
