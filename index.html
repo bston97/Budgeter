@@ -372,6 +372,9 @@
     padding: 9px 0; border-radius: 8px; cursor: pointer; width: 100%;
   }
   .half-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  /* on = the amount is currently showing half, and the full value is held for the way back */
+  .half-btn.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .half-btn.on:hover { background: var(--accent); color: #fff; filter: brightness(1.06); }
   .line-row input[type="date"] { font-size: 13px; color: var(--ink-soft); }
 
   .add-btn {
@@ -2834,18 +2837,39 @@ import {
       var cur = el("span", "cur"); cur.textContent = "$";
       var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
       amt.value = item.price || "";
-      amt.addEventListener("input", function () { item.price = amt.value; touchSettle(); });
+      amt.addEventListener("input", function () {
+        item.price = amt.value;
+        // typing a new amount makes the stored full value meaningless, so the split lets go
+        // and the button is free to halve whatever was just entered
+        if (item.full) { delete item.full; syncHalf(); }
+        touchSettle();
+      });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
 
-      // enter the full bill, tap ½, and it becomes the other person's share
-      var half = el("button", "half-btn", { type: "button", title: "Split in half — halve this amount" });
+      // enter the full bill, tap ½, and it becomes the other person's share. A toggle, not a
+      // repeat divide: `item.full` holds the pre-split amount so tapping again puts it back.
+      var half = el("button", "half-btn", { type: "button" });
       half.textContent = "½";
-      half.setAttribute("aria-label", "Split this amount in half");
+      function syncHalf() {
+        var on = !!item.full;
+        half.classList.toggle("on", on);
+        half.setAttribute("aria-pressed", on ? "true" : "false");
+        half.title = on ? "Showing half — tap to restore the full amount" : "Split in half — halve this amount";
+        half.setAttribute("aria-label", on ? "Restore the full amount" : "Split this amount in half");
+      }
+      syncHalf();
       half.addEventListener("click", function () {
-        var v = num(item.price);
-        if (v <= 0) return;
-        item.price = (Math.round((v / 2) * 100) / 100).toFixed(2);
+        if (item.full) {
+          item.price = item.full;      // back to the whole bill
+          delete item.full;
+        } else {
+          var v = num(item.price);
+          if (v <= 0) return;
+          item.full = item.price;      // remember the way back before splitting
+          item.price = (Math.round((v / 2) * 100) / 100).toFixed(2);
+        }
         amt.value = item.price;   // update in place; re-rendering would eat the next click
+        syncHalf();
         touchSettle();
       });
 
