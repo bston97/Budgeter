@@ -1,5 +1,5 @@
 /* Penny Pincher service worker — network-first so a deploy always wins, cache only as an offline fallback. */
-var CACHE = "runway-v4";
+var CACHE = "runway-v5";
 var SHELL = ["./", "./index.html", "./js/core.js", "./manifest.json", "./mark.png",
              "./favicon-32.png", "./favicon-64.png", "./apple-touch-icon.png",
              "./icon-192.png", "./icon-512.png"];

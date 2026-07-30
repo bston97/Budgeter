@@ -8,6 +8,13 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.22.0] — 2026-07-29
+
+### Changed
+- **Salaried pay is one number now: what actually hits your account.** It used to ask for an annual salary and a take-home percentage, then divide by 24 and multiply the two together to guess at a check. That was arithmetic you had to reverse-engineer to check, built on a percentage nobody knows off the top of their head. The Salaried pay type now asks for **take-home per paycheck** and uses it exactly as entered — no estimate, no percentage, nothing to work out.
+
+  Annual salary and take-home % are gone from the salaried view (take-home % stays for Hourly, where the estimate still needs it). If you had a salary entered, it was converted for you: the app filled in the same figure it had been showing you (salary ÷ 24 × take-home %), so your projection didn't move — you can now just type over it with the real number from your pay stub.
+
 ## [1.21.0] — 2026-07-28
 
 ### Added

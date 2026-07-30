@@ -282,27 +282,23 @@ export function sparkPoints(values, W, H, pad) {
 
 // ---------- paycheck projection ----------
 
-export var PERIODS_PER_YEAR = 24; // semi-monthly: the 15th and the last day
-
-// Projected take-home for the period ending on `payday`, based on weekdays actually
-// worked. Takes the pay settings explicitly rather than reaching for global state, which
-// is the one change made while extracting this file — it is what makes it testable.
+// Projected take-home for the period ending on `payday`. Hourly is based on the weekdays
+// actually worked; salaried is simply the figure on the check. Takes the pay settings
+// explicitly rather than reaching for global state — that is what makes it testable.
 export function projectedCheck(p, payday) {
   var weekdays = countWeekdays(payPeriodStart(payday), payday);
-  var takeHome = p.takeHome === "" ? 100 : Math.max(0, Math.min(100, num(p.takeHome)));
 
   if (p.mode === "salary") {
-    // Salaried semi-monthly pay is the same every period — weekday count doesn't change it.
-    var exact = Math.max(0, num(p.netCheck));
-    if (exact > 0) return { mode: "salary", exact: true, weekdays: weekdays, gross: exact, net: exact };
-    var salary = Math.max(0, num(p.salary));
-    if (salary <= 0) return null;
-    var grossCheck = salary / PERIODS_PER_YEAR;
-    return { mode: "salary", exact: false, weekdays: weekdays, gross: grossCheck, net: grossCheck * (takeHome / 100) };
+    // Salaried pay is entered as the take-home figure on the check itself — no annual
+    // estimate, no take-home %. It is the same every period, so weekdays don't change it.
+    var net = Math.max(0, num(p.netCheck));
+    if (net <= 0) return null;
+    return { mode: "salary", weekdays: weekdays, gross: net, net: net };
   }
 
   var rate = Math.max(0, num(p.rate));
   if (rate <= 0) return null;
+  var takeHome = p.takeHome === "" ? 100 : Math.max(0, Math.min(100, num(p.takeHome)));
   // days off can only remove days you'd actually work
   var worked = weekdays - Math.min(weekdays, Math.max(0, num(p.daysOff)));
   var perWeek = p.hoursUnit === "week";

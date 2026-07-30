@@ -199,20 +199,28 @@ test("INVARIANT: every 2026 semi-monthly period has 10–12 weekdays", () => {
   }
 });
 
-test("salary mode: an exact take-home figure wins over the annual estimate", () => {
-  const r = projectedCheck({ mode: "salary", netCheck: "2000", salary: "60000", takeHome: "75" }, D(2026, 7, 15));
-  assert.equal(r.exact, true);
-  near(r.net, 2000, "an exact net check must be used as-is");
+test("salary mode: the entered per-check take-home is used as-is (1.22.0)", () => {
+  const r = projectedCheck({ mode: "salary", netCheck: "2000" }, D(2026, 7, 15));
+  near(r.net, 2000, "what you typed is what lands");
+  near(r.gross, 2000, "there is no gross to estimate any more");
 });
 
-test("salary mode: annual divided by 24, then take-home", () => {
-  const r = projectedCheck({ mode: "salary", netCheck: "", salary: "60000", takeHome: "75" }, D(2026, 7, 15));
-  near(r.gross, 2500);
-  near(r.net, 1875);
+test("salary mode ignores take-home % and days off (1.22.0)", () => {
+  const plain = projectedCheck({ mode: "salary", netCheck: "1800" }, D(2026, 7, 15));
+  const noisy = projectedCheck({ mode: "salary", netCheck: "1800", takeHome: "50", daysOff: "5" }, D(2026, 7, 15));
+  near(noisy.net, plain.net, "leftover hourly settings must not touch a salaried check");
+});
+
+test("salary mode is the same in every period, whatever the weekdays (1.22.0)", () => {
+  const a = projectedCheck({ mode: "salary", netCheck: "1800" }, D(2026, 7, 15));
+  const b = projectedCheck({ mode: "salary", netCheck: "1800" }, D(2026, 7, 31));
+  near(a.net, b.net);
 });
 
 test("salary mode returns null with nothing entered", () => {
-  assert.equal(projectedCheck({ mode: "salary", netCheck: "", salary: "", takeHome: "100" }, D(2026, 7, 15)), null);
+  assert.equal(projectedCheck({ mode: "salary", netCheck: "" }, D(2026, 7, 15)), null);
+  assert.equal(projectedCheck({ mode: "salary", netCheck: "-500" }, D(2026, 7, 15)), null,
+    "a negative check is not a check");
 });
 
 test("hourly: rate x hours x weekdays worked", () => {
