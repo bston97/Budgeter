@@ -8,6 +8,17 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.23.0] — 2026-07-29
+
+### Fixed
+- **A card payment now counts against the period you typed it in.** Pay two cards on the same day and only one of them is due this cycle: the app used to park the second one on its due date next month, so the money had left your account but the app still counted it as available. You'd look flush for two weeks and come up short.
+
+  An amount you enter is treated as money leaving that day. If the due date is still ahead of you inside the same period, nothing changes — it stays on the due date, where the running balance expects it. Otherwise it lands on the day you typed it.
+
+  When the period holding the due date comes around, that row shows nothing owing and says what already went out — *paid $200 · Jul 29* — instead of asking for the money a second time. Type a new amount there and it becomes this period's payment; clear it again and the old one comes back.
+
+  Payments entered before this update keep their old meaning until they clear, so nothing you already typed moves on its own.
+
 ## [1.22.0] — 2026-07-29
 
 ### Changed
