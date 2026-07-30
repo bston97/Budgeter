@@ -61,16 +61,19 @@ three** due-day clones. Adding subscriptions invites a fifth copy.
 
 ### Duplication that has already drifted
 
-- **Dead code.** `renderAccounts()` describes itself as the generic row renderer
+- ~~**Dead code.** `renderAccounts()` describes itself as the generic row renderer
   for cards and loans. Neither uses it anymore; its only caller is its own delete handler.
-  Nothing removed it, because in a file this size nothing notices.
+  Nothing removed it, because in a file this size nothing notices.~~
+  Removed in 1.27.0, along with its `.col-head.accts` rule and two now-unused core imports.
+  It stayed dead for six releases, which is the point the entry was making.
 - **Two parallel sync stacks.** Private (`scheduleCloud`/`pushCloud`/`onSaveFail`) and
   shared (`scheduleSharedSave`/`pushShared`, plus rev-id echo suppression). The drift has
   bitten twice in opposite directions: 1.7.0 fixed "'will retry' never actually retried on
   the shared path," a retry that existed on one stack and not its twin, and 1.18.1 had to
   port the rev ids and sequence guard back the other way. Two stacks, one behavior — every
   fix has to be applied twice, and historically hasn't been.
-- **`todayISO()` and `dateToISO()`** are two implementations of the same formatting.
+- ~~**`todayISO()` and `dateToISO()`** are two implementations of the same formatting.~~
+  Fixed in Step 1: `todayISO()` now delegates to `dateToISO()` in `js/core.js`.
 - The semi-monthly assumption is baked into **prose**, not just code: the static
   "Paid the 15th and last day of the month." above the paycheck block, "paydays are the
   15th and last day of each month" in the footer, and two more strings inside
@@ -198,8 +201,8 @@ parse. Small and checkable.
 
 Three commits: CSS to `styles.css`; then `js/state.js` (defaults/migrate/localStorage) and
 `js/sync.js`; then `js/ui/` per section (`bills`, `cards`, `loans`, `assets`, `oneoffs`,
-`settle`, `paycheck`, `rollover`) plus `js/app.js`. Delete dead `renderAccounts()` while
-moving. **No behavior changes in these commits** — that discipline is what makes a wide
+`settle`, `paycheck`, `rollover`) plus `js/app.js`. (Dead `renderAccounts()` is already
+gone as of 1.27.0.) **No behavior changes in these commits** — that discipline is what makes a wide
 mechanical change safe. Add `CLAUDE.md` with the invariants listed at the bottom of this
 document and a file map, which is what preserves top-to-bottom readability.
 
@@ -250,6 +253,9 @@ exactly why Step 1 uses them.
 > node serve.mjs 8321                    # a few lines of node:http, no dependencies
 > msedge --headless=new --disable-gpu --virtual-time-budget=12000 --dump-dom http://127.0.0.1:8321/
 > ```
+>
+> `serve.mjs` is **not in the repo** — it lives in the scratchpad, so this is a recipe to
+> recreate, not a command to run. See the same caveat in ROADMAP.md.
 >
 > That doubles as a smoke test: if JS-computed values are present in the dumped DOM
 > (`#billsTotal` reads `$2,165.00` from the default bills), the script parsed and `boot()`

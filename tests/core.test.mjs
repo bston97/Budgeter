@@ -1,4 +1,5 @@
-// Run with:  node --test tests/
+// Run with:  node --test tests/core.test.mjs
+// (bare `node --test tests/` resolves the directory as a module on Node 24 / Windows and fails)
 //
 // No dependencies, no config, no build. These import js/core.js directly — the same file
 // the browser loads — so they test the shipping code rather than a copy of it.

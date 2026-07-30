@@ -161,9 +161,10 @@ Generalizing it means three pieces:
 Way down the line, and worth designing carefully rather than quickly — this is the one
 feature where a mistake exposes one user's data to another.
 
-**Tests for the parts that aren't pure.** The pure core got covered in 1.20.0 — 65 cases
-in `tests/core.test.mjs` run with `node --test`, each named for the release whose bug it
-pins. That was the highest-risk code and it's done.
+**Tests for the parts that aren't pure.** The pure core got covered in 1.20.0 and has grown
+with each release since — 80 cases in `tests/core.test.mjs` as of 1.26.0, run with
+`node --test tests/core.test.mjs`, each named for the release whose bug it pins. That was
+the highest-risk code and it's done.
 
 What's still untested is everything that touches the DOM or the network: the renderers,
 the event wiring, and the sync layer's side effects (as opposed to `mergeSections`, which

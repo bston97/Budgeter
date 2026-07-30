@@ -328,7 +328,6 @@
     font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
     color: var(--ink-faint); font-weight: 700; padding-bottom: 4px;
   }
-  .col-head.accts { grid-template-columns: 1fr 108px 34px; }
   .col-head.assets-head { grid-template-columns: 1fr 84px 104px 108px 30px; }
   .line-row.asset-row {
     display: grid; grid-template-columns: 1fr 84px 104px 108px 30px; gap: 8px; align-items: center;
@@ -403,6 +402,36 @@
   .col-head.cards-head { grid-template-columns: 1fr 78px 72px 96px 34px; }
   .line-row.card-row { grid-template-columns: 1fr 78px 72px 96px 34px; }
 
+  /* Phone: four fixed columns beside a name leaves the name nothing, so these rows fold onto
+     a second line the way loan and asset rows already do. Placed by position — unlike those,
+     these rows are plain divs with no area classes to name. */
+  @media (max-width: 860px) {
+    .col-head.cards-head, .col-head.bills, .col-head.ledger { display: none; }
+
+    .line-row.card-row { grid-template-columns: 1fr 78px 34px; }
+    .card-row > :nth-child(3) { grid-column: 1; grid-row: 2; }           /* minimum */
+    .card-row > :nth-child(4) { grid-column: 2 / span 2; grid-row: 2; }  /* due day */
+    .card-row > :nth-child(5) { grid-column: 3; grid-row: 1; }           /* remove */
+
+    .line-row.bills-row { grid-template-columns: 26px 1fr 92px 30px; }
+    .bills-row > :nth-child(1) { grid-row: 1 / span 2; }                 /* paid tick */
+    .bills-row > :nth-child(2) { grid-column: 2 / span 2; }              /* name */
+    .bills-row > :nth-child(3) { grid-column: 2; grid-row: 2; }          /* amount */
+    .bills-row > :nth-child(4) { grid-column: 3 / span 2; grid-row: 2; } /* due day */
+    .bills-row > :nth-child(5) { grid-column: 4; grid-row: 1; }          /* remove */
+
+    /* minmax(0,…) and min-width:0 so the flexible column may shrink past its content's
+       natural size — a date input reports a wide minimum and would otherwise push the
+       whole page a pixel or two past the screen */
+    .line-row.ledger-row { grid-template-columns: minmax(0, 1fr) 80px 30px 30px; }
+    .ledger-row > *, .ledger-row input { min-width: 0; }
+    .ledger-row > :nth-child(1) { grid-column: 1 / span 4; }             /* what for */
+    .ledger-row > :nth-child(2) { grid-column: 1; grid-row: 2; }         /* date */
+    .ledger-row > :nth-child(3) { grid-column: 2; grid-row: 2; }         /* amount */
+    .ledger-row > :nth-child(4) { grid-column: 3; grid-row: 2; }         /* ½ */
+    .ledger-row > :nth-child(5) { grid-column: 4; grid-row: 2; }         /* remove */
+  }
+
   /* loan rows carry a fixed payment and a due day */
   .col-head.loans-head { grid-template-columns: 1fr 76px 76px 96px 30px; }
   .line-row.loan-row {
@@ -446,8 +475,6 @@
   .cp-fixed { text-align: right; font-weight: 650; font-size: 14px; color: var(--ink-soft); padding-right: 2px; }
   .cp-after { grid-column: 1 / -1; font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-top: -2px; }
   .cp-after.neg { color: var(--crit); }
-
-  /* one-off payment → credit card link */
 
   .subtotal {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -670,7 +697,8 @@
     cursor: pointer; font-family: inherit; font-size: 12px;
   }
   footer.note button:hover { color: var(--crit); }
-  #clearCycle:hover { color: var(--accent); } /* routine housekeeping, not the destructive one */
+  /* neither of these destroys anything, so they don't take the reset button's red hover */
+  #clearCycle:hover, #exportData:hover { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -1151,6 +1179,7 @@
 
     <footer class="note">
       Synced to your account across devices · paydays are the 15th and last day of each month ·
+      <button id="exportData" type="button">Download a backup</button> ·
       <button id="clearCycle" type="button">Clear this cycle's entries</button> ·
       <button id="reset" type="button">Reset all data</button>
     </footer>
@@ -1163,8 +1192,8 @@ import {
   num, money, canon, mergeSections,
   stripTime, isoToDate, dateToISO, todayISO,
   nextPayday, mostRecentPayday, currentPeriod, payPeriodStart, countWeekdays,
-  occurrenceInMonth, occurrenceInPeriod, occurrenceAfter, mostRecentOccurrence,
-  billDate, billOccurrence, cardDueDate, cardPaymentPlacement, projectedCheck,
+  occurrenceInPeriod, occurrenceAfter, mostRecentOccurrence,
+  billOccurrence, cardDueDate, cardPaymentPlacement, projectedCheck,
   recordPeriod, periodDelta, periodStats, sparkPoints, PERIOD_HISTORY_CAP
 } from "./js/core.js";
 
@@ -1704,31 +1733,6 @@ import {
   }
 
   // Generic name+balance row renderer (credit cards, loans). Assets use renderAssets.
-  function renderAccounts(boxId, arr, namePh, onchange) {
-    var box = document.getElementById(boxId);
-    box.innerHTML = "";
-    arr.forEach(function (c, i) {
-      var row = el("div", "line-row");
-      var name = el("input", null, { type: "text", placeholder: namePh });
-      name.value = c.name;
-      name.addEventListener("input", function () { c.name = name.value; save(); });
-
-      var amtWrap = el("div", "amt");
-      var cur = el("span", "cur"); cur.textContent = "$";
-      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
-      amt.value = c.balance;
-      amt.addEventListener("input", function () { c.balance = amt.value; onchange(); });
-      amtWrap.appendChild(cur); amtWrap.appendChild(amt);
-
-      var del = el("button", "del", { type: "button", "aria-label": "Remove" });
-      del.innerHTML = "&times;";
-      del.addEventListener("click", function () { arr.splice(i, 1); renderAccounts(boxId, arr, namePh, onchange); onchange(); });
-
-      row.appendChild(name); row.appendChild(amtWrap); row.appendChild(del);
-      box.appendChild(row);
-    });
-  }
-
   // Credit cards: name, balance, and a payment due day that drives the Payday tab's debt-payments section.
   function renderCards() {
     var box = document.getElementById("cards");
@@ -1736,13 +1740,13 @@ import {
     state.cards.forEach(function (c, i) {
       var row = el("div", "line-row card-row");
 
-      var name = el("input", null, { type: "text", placeholder: "Card name" });
+      var name = el("input", null, { type: "text", placeholder: "Card name", "aria-label": "Card name" });
       name.value = c.name;
       name.addEventListener("input", function () { c.name = name.value; save(); renderCardPayments(); });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
-      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00", "aria-label": "Balance owed" });
       amt.value = c.balance;
       amt.addEventListener("input", function () { c.balance = amt.value; onWorthChange(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
@@ -1752,7 +1756,7 @@ import {
       // have to clear.
       var minWrap = el("div", "amt");
       var minCur = el("span", "cur"); minCur.textContent = "$";
-      var minIn = el("input", null, { type: "text", inputmode: "decimal", placeholder: "—", title: "Minimum payment due each month" });
+      var minIn = el("input", null, { type: "text", inputmode: "decimal", placeholder: "—", title: "Minimum payment due each month", "aria-label": "Minimum payment" });
       minIn.value = c.minPay || "";
       minIn.addEventListener("input", function () { c.minPay = minIn.value; save(); renderCardPayments(); });
       minWrap.appendChild(minCur); minWrap.appendChild(minIn);
@@ -1804,13 +1808,13 @@ import {
     state.loans.forEach(function (l, i) {
       var row = el("div", "line-row loan-row");
 
-      var name = el("input", "ln-name", { type: "text", placeholder: "Loan name" });
+      var name = el("input", "ln-name", { type: "text", placeholder: "Loan name", "aria-label": "Loan name" });
       name.value = l.name;
       name.addEventListener("input", function () { l.name = name.value; save(); renderCardPayments(); });
 
       var balWrap = el("div", "amt ln-bal");
       var bcur = el("span", "cur"); bcur.textContent = "$";
-      var bal = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      var bal = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00", "aria-label": "Loan balance" });
       bal.value = l.balance;
       bal.addEventListener("input", function () { l.balance = bal.value; onWorthChange(); });
       balWrap.appendChild(bcur); balWrap.appendChild(bal);
@@ -1932,7 +1936,8 @@ import {
         var amtWrap = el("div", "amt");
         var cur = el("span", "cur"); cur.textContent = "$";
         var amt = el("input", null, { type: "text", inputmode: "decimal",
-          placeholder: minAmt > 0 ? minAmt.toFixed(2) : "0.00" }); // the minimum as a hint of what's expected
+          placeholder: minAmt > 0 ? minAmt.toFixed(2) : "0.00", // the minimum as a hint of what's expected
+          "aria-label": "Payment amount for " + (c.name || "this card") });
         amt.value = settled ? "" : (c.payAmount || "");
         var rowRef = { c: c, loan: false, settled: settled, minAmt: minAmt, underEl: underLbl };
         amt.addEventListener("input", function () {
@@ -2050,7 +2055,7 @@ import {
 
       var amtWrap = el("div", "amt as-value");
       var cur = el("span", "cur"); cur.textContent = "$";
-      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00", "aria-label": "Asset value" });
       amt.value = c.balance;
       var focusVal = amt.value;
       amt.addEventListener("focus", function () { focusVal = amt.value; });
@@ -2173,13 +2178,13 @@ import {
       });
       row.appendChild(paidBox);
 
-      var name = el("input", null, { type: "text", placeholder: "Bill name" });
+      var name = el("input", null, { type: "text", placeholder: "Bill name", "aria-label": "Bill name" });
       name.value = b.name;
       name.addEventListener("input", function () { b.name = name.value; recompute(); });
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
-      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00", "aria-label": "Bill amount" });
       amt.value = b.amount;
       amt.addEventListener("input", function () { b.amount = amt.value; recompute(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
@@ -2256,7 +2261,7 @@ import {
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
-      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00", "aria-label": "Amount" });
       amt.value = o.amount || "";
       amt.addEventListener("input", function () { o.amount = amt.value; recompute(); });
       amtWrap.appendChild(cur); amtWrap.appendChild(amt);
@@ -2934,12 +2939,15 @@ import {
     if (!box || !card) return;
     card.hidden = h.length === 0;
     box.innerHTML = "";
+    var you = S().nameA || "You";
     h.forEach(function (e) {
       var row = el("div", "hist-row");
       var d = el("div", "hist-date"); d.textContent = fmtISO(e.date);
       var who = el("div");
       who.textContent = e.amount < 0.005 ? "Settled — all square" : e.from + " paid " + e.to;
-      var amt = el("div", "hist-amt"); amt.textContent = money(e.amount);
+      // green when the money came your way, red when it went out — an even settle stays plain
+      var dir = e.amount < 0.005 ? "" : (e.to === you ? " up" : " down");
+      var amt = el("div", "hist-amt" + dir); amt.textContent = money(e.amount);
       row.appendChild(d); row.appendChild(who); row.appendChild(amt);
       box.appendChild(row);
     });
@@ -2992,7 +3000,7 @@ import {
     box.innerHTML = "";
     arr.forEach(function (item, i) {
       var row = el("div", "line-row ledger-row");
-      var desc = el("input", null, { type: "text", placeholder: "What for" });
+      var desc = el("input", null, { type: "text", placeholder: "What for", "aria-label": "What the entry was for" });
       desc.value = item.desc || "";
       desc.addEventListener("input", function () { item.desc = desc.value; touchSettle(); });
 
@@ -3002,7 +3010,7 @@ import {
 
       var amtWrap = el("div", "amt");
       var cur = el("span", "cur"); cur.textContent = "$";
-      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00" });
+      var amt = el("input", null, { type: "text", inputmode: "decimal", placeholder: "0.00", "aria-label": "Amount" });
       amt.value = item.price || "";
       amt.addEventListener("input", function () {
         item.price = amt.value;
@@ -3048,7 +3056,13 @@ import {
 
       var del = el("button", "del", { type: "button", "aria-label": "Remove entry" });
       del.innerHTML = "&times;";
-      del.addEventListener("click", function () { arr.splice(i, 1); renderLedger(boxId, arr); touchSettle(); });
+      // by identity, not by the captured index: a realtime update from the other person can
+      // rebuild this list underneath us, and a stale index would delete the wrong entry
+      del.addEventListener("click", function () {
+        var at = arr.indexOf(item);
+        if (at >= 0) arr.splice(at, 1);
+        renderLedger(boxId, arr); touchSettle();
+      });
 
       row.appendChild(desc); row.appendChild(date); row.appendChild(amtWrap); row.appendChild(half); row.appendChild(del);
       box.appendChild(row);
@@ -3258,6 +3272,19 @@ import {
     });
     document.getElementById("nameB").addEventListener("input", function () {
       S().nameB = this.value; saveSettle(); recomputeSettle();
+    });
+    // The only way out of the app. Everything already serializes for the cloud, so a backup
+    // is that same payload plus the shared ledger, which lives in its own row.
+    document.getElementById("exportData").addEventListener("click", function () {
+      var dump = { exported: new Date().toISOString(), budget: state };
+      if (sharedMode && sharedData) dump.sharedSettle = sharedData;
+      var url = URL.createObjectURL(new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" }));
+      var a = el("a", null, { href: url, download: "penny-pincher-" + todayISO() + ".json" });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      pennySay("Backup downloaded.");
     });
     document.getElementById("clearCycle").addEventListener("click", function () {
       var n = 0;

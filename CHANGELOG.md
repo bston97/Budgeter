@@ -8,6 +8,24 @@ release, the last is a small fix.
 
 Live app: https://bston97.github.io/Budgeter/
 
+## [1.27.0] — 2026-07-30
+
+### Added
+- **Download a backup**, in the footer. A single JSON file with everything the app holds — your budget, and the shared settle-up ledger if you're on one. Until now there was no way to get your own numbers out of here.
+
+### Fixed
+- **Rows fit on a phone again.** Bills, cards and settle-up entries kept all their columns side by side no matter how narrow the screen, squeezing the name down to a sliver — and the new Minimum column would have made cards far worse. Each of those now folds onto a second line below about 860px, the way loan and asset rows already did. A stray pixel of sideways scroll on the settle-up tab is gone with it.
+
+- **Settle-up history is colour-coded**, green when the money came your way and red when it went out. The styling had been written but never applied.
+
+- **Deleting a settle-up entry always removes the one you clicked**, even if your partner's edit rebuilt the list a moment earlier. Every other list was fixed this way in 1.19.0; this one was missed.
+
+- The name and amount boxes in every row now announce themselves properly to a screen reader instead of reading as an unlabelled text field.
+
+### Changed
+- Removed `renderAccounts()`, dead since the card and loan rows got their own renderers, plus its leftover styles and two unused imports. An installed app is no longer locked to portrait, which was fighting the two-column layout on a tablet.
+- Docs corrected where they'd drifted: the test count, a fix recorded as still outstanding, and two commands that don't work as written.
+
 ## [1.26.0] — 2026-07-30
 
 ### Added
