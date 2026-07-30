@@ -255,6 +255,27 @@ test("a payment with a due date the user since cleared still charges on paidOn (
   assert.equal(iso(p.when), "2026-07-22", "no due date to sit on — the money still left today");
 });
 
+// A due day arrives one character at a time. Treating a half-typed or nonsense day as the
+// 1st put a bill on the 1st on every keystroke; billOccurrence always rejected the same
+// input, so these two now agree (1.26.0).
+test("a due day that isn't a day has no occurrence (1.26.0)", () => {
+  assert.equal(occurrenceInMonth("0", 2026, 7), null, "zero is not a day of the month");
+  assert.equal(occurrenceInMonth("abc", 2026, 7), null);
+  assert.equal(occurrenceInMonth("", 2026, 7), null);
+  assert.equal(occurrenceInMonth("-3", 2026, 7), null);
+  assert.equal(occurrenceInPeriod("0", D(2026, 8, 1), D(2026, 8, 15)), null,
+    "used to land on Aug 1 and charge the bill there");
+  assert.equal(occurrenceAfter("0", D(2026, 8, 1)), null);
+  assert.equal(mostRecentOccurrence("abc", D(2026, 8, 10)), null);
+});
+
+test("a real due day still resolves the same way (1.26.0)", () => {
+  assert.equal(iso(occurrenceInMonth("5", 2026, 7)), "2026-08-05");
+  assert.equal(iso(occurrenceInMonth("EOM", 2026, 1)), "2026-02-28", "EOM still means the last day");
+  assert.equal(iso(occurrenceInMonth(31, 2026, 1)), "2026-02-28", "and 31 still clamps to it");
+  assert.equal(iso(occurrenceInPeriod(5, D(2026, 8, 1), D(2026, 8, 15))), "2026-08-05");
+});
+
 test("billDate clamps a 31st to short months", () => {
   assert.equal(iso(billDate(31, D(2026, 4, 1))), "2026-04-30");
   assert.equal(iso(billDate(31, D(2026, 2, 1))), "2026-02-28");

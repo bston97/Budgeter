@@ -151,11 +151,16 @@ export function countWeekdays(start, end) {
 // ---------- due-day occurrences ----------
 // A due day is a number 1–28, or "EOM" for the last day of the month.
 
-// the due-day occurrence within a specific month, clamped like bills (EOM = last day)
+// The due-day occurrence within a specific month, clamped like bills (EOM = last day).
+// Null for a day that isn't one — a due day is typed a character at a time, and treating
+// "" or "0" or a stray letter as the 1st charged the bill on the 1st on every keystroke.
+// billOccurrence has always rejected the same input; this agrees with it.
 export function occurrenceInMonth(dueDay, y, m) {
   var lastDay = new Date(y, m + 1, 0).getDate();
-  var day = String(dueDay).toUpperCase() === "EOM" ? lastDay : Math.min(parseInt(dueDay, 10) || 1, lastDay);
-  return new Date(y, m, day);
+  if (String(dueDay).toUpperCase() === "EOM") return new Date(y, m, lastDay);
+  var n = parseInt(dueDay, 10);
+  if (isNaN(n) || n < 1) return null;
+  return new Date(y, m, Math.min(n, lastDay));
 }
 
 // A bill's occurrence inside a given window (periods are ≤16 days, so at most one).
@@ -166,18 +171,20 @@ export function occurrenceInPeriod(dueDay, start, end) {
     occurrenceInMonth(dueDay, end.getFullYear(), end.getMonth())
   ];
   for (var i = 0; i < cands.length; i++) {
-    if (cands[i] >= start && cands[i] <= end) return cands[i];
+    if (cands[i] && cands[i] >= start && cands[i] <= end) return cands[i];
   }
   return null;
 }
 
 export function occurrenceAfter(dueDay, after) {
   var o = occurrenceInMonth(dueDay, after.getFullYear(), after.getMonth());
+  if (!o) return null;
   return o > after ? o : occurrenceInMonth(dueDay, after.getFullYear(), after.getMonth() + 1);
 }
 
 export function mostRecentOccurrence(dueDay, today) {
   var o = occurrenceInMonth(dueDay, today.getFullYear(), today.getMonth());
+  if (!o) return null;
   return o <= today ? o : occurrenceInMonth(dueDay, today.getFullYear(), today.getMonth() - 1);
 }
 

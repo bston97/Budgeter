@@ -979,7 +979,7 @@
           <div class="amount-label" id="creditRating">Enter your score below</div>
           <div class="gauge"><div class="gauge-marker" id="creditMarker"></div></div>
           <div class="gauge-scale"><span>Poor · 300</span><span>850 · Excellent</span></div>
-          <input type="number" id="creditInput" min="300" max="850" inputmode="numeric" placeholder="Enter score (300–850)" />
+          <input type="text" id="creditInput" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Enter score (300–850)" />
           <div class="asof-row">
             <label for="creditDate">Last checked</label>
             <input type="date" id="creditDate" />
@@ -1186,6 +1186,7 @@ import {
   var syncedRev = null;     // _rev of the server copy we last saw; anything else means another device wrote
   var baseState = null;     // that same copy, kept so a conflict can be merged section by section
   var pendingRedraw = false;
+  var billsApplyDeferred = false; // a bill decision held back while its due day was mid-edit
 
   // ---------- state helpers ----------
   function defaults() {
@@ -1260,6 +1261,14 @@ import {
     if (!Array.isArray(s.oneoffs)) s.oneoffs = [];
     // entries predate the in/out switch and were all money leaving checking
     s.oneoffs.forEach(function (o) { if (o.dir !== "in" && o.dir !== "out") o.dir = "out"; });
+    // Entries written before periodEnd existed have no expiry, so clearOldOneoffs skips them
+    // forever and they quietly drag "available" every period. Give them the period their own
+    // date falls in — or this one, for an entry with no date either.
+    s.oneoffs.forEach(function (o) {
+      if (o.periodEnd) return;
+      var at = o.date ? isoToDate(o.date) : new Date();
+      o.periodEnd = dateToISO(nextPayday(at));
+    });
     if (!s.pay || typeof s.pay !== "object") s.pay = {};
     ["mode", "rate", "per", "hours", "hoursUnit", "takeHome", "daysOff", "salary", "netCheck"].forEach(function (k) {
       if (typeof s.pay[k] !== "string") s.pay[k] = s.pay[k] != null ? String(s.pay[k]) : "";
@@ -1536,7 +1545,9 @@ import {
       if (!l.dueDay) return;
       // first time we see a due day, just mark where we are — never charge retroactively
       if (!l.lastApplied) {
-        l.lastApplied = dateToISO(mostRecentOccurrence(l.dueDay, today));
+        var seen = mostRecentOccurrence(l.dueDay, today);
+        if (!seen) return; // day still being typed — nothing to anchor to yet
+        l.lastApplied = dateToISO(seen);
         changed = true;
         return;
       }
@@ -1546,7 +1557,7 @@ import {
       var guard = 0;
       while (guard++ < 120) { // catches up if the app wasn't opened for months
         var next = occurrenceAfter(l.dueDay, last);
-        if (next >= today) break;
+        if (!next || next >= today) break;
         l.balance = Math.max(0, num(l.balance) - pay).toFixed(2);
         adjustChecking(-pay); // the draft left the bank; keeping checking flat would bounce "available" up
         l.lastApplied = dateToISO(next);
@@ -1584,6 +1595,13 @@ import {
   // watching while they were still upcoming — one first seen already past was paid before we
   // knew about it, so the balance already reflects it.
   function applyPassedBills() {
+    // A due day is typed one character at a time, and "2" on the way to "25" is a real date
+    // that may already have passed. Deciding a bill is paid from that leaves a tick behind
+    // for a day nobody meant, and the redraw that follows takes the focus away mid-keystroke.
+    // Whatever is true after they finish typing is still true a moment later, on blur.
+    var billsBox = document.getElementById("bills");
+    if (billsBox && billsBox.contains(document.activeElement)) { billsApplyDeferred = true; return false; }
+    billsApplyDeferred = false;
     var today = stripTime(new Date());
     var per = currentPeriod(today);
     var changed = false;
@@ -2098,7 +2116,7 @@ import {
 
       var dueWrap = el("div", "due-cell");
       var isEom = String(b.due).toUpperCase() === "EOM";
-      var due = el("input", null, { type: "number", min: "1", max: "28", placeholder: "1", title: "Day of month (1–28), or use EOM" });
+      var due = el("input", null, { type: "text", inputmode: "numeric", pattern: "[0-9]*", maxlength: "2", placeholder: "1", title: "Day of month (1–28), or use EOM" });
       due.value = isEom ? "" : (b.due || "");
       due.disabled = isEom;
       // never clamp mid-typing — that turned "05" into "15" as you typed. Correct it on the way out instead.
@@ -2243,7 +2261,8 @@ import {
       upcoming.push({ name: o.desc || "Entry", amount: signed, when: when, beforePay: true, oneOff: true });
     });
     state.cards.forEach(function (c) {
-      if (!c.dueDay) return;
+      // no dueDay guard: an amount typed and then left without a due day is still money
+      // that left the account, and placement charges it on the day it was entered
       var place = cardPaymentPlacement(c, cardDueDate(c, today), period, today);
       // settled = paid in an earlier period, so the money is long gone from checking
       if (!place || place.settled) return;
@@ -3048,7 +3067,8 @@ import {
     document.getElementById("creditInput").addEventListener("blur", function () {
       if (this.value === "") return;
       var v = parseInt(this.value, 10);
-      if (isNaN(v)) return;
+      // a text input can hold anything; leaving nonsense there would show a score of 0
+      if (isNaN(v)) { this.value = ""; state.creditScore = ""; save(); recomputeCredit(); return; }
       var c = Math.max(300, Math.min(850, v)); // scores only exist in the 300–850 range
       if (c !== v) { this.value = String(c); state.creditScore = this.value; save(); recomputeCredit(); }
     });
@@ -3286,7 +3306,11 @@ import {
 
     // apply anything that arrived while a field had focus and was held back
     document.addEventListener("focusout", function () {
-      setTimeout(function () { flushRemoteSettle(); flushRedraw(); }, 0);
+      setTimeout(function () {
+        flushRemoteSettle(); flushRedraw();
+        // a due day held back while it was being typed can be acted on now
+        if (billsApplyDeferred) recompute();
+      }, 0);
     });
   }
 
