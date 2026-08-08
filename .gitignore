@@ -4,3 +4,17 @@
 # OS cruft
 Thumbs.db
 .DS_Store
+
+# Secrets and local config — never commit these
+.env
+.env.*
+!.env.example
+
+# Node — the app ships no build, but the tests run under node
+node_modules/
+npm-debug.log*
+
+# Scratch / build output, should any appear
+dist/
+build/
+*.log
